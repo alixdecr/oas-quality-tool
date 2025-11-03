@@ -1,11 +1,15 @@
 import language_tool_python, re, textstat
+from Utils import Utils
 
 
 class QualityEvaluator:
 
 
-    def __init__(self):
+    def __init__(self, oas_path):
+
         self.language_tool = language_tool_python.LanguageTool("en-US")
+        self.oas = Utils.load_json(oas_path)
+        self.evaluations = {}
 
 
     def evaluate_description_quality(self, description):
@@ -50,3 +54,25 @@ class QualityEvaluator:
             "score": score,
             "feedback": feedback
         }
+    
+
+    def evaluate_json_syntax(self):
+
+        self.evaluations["json-syntax"] = "fail"
+
+        if self.oas is not None:
+            self.evaluations["json-syntax"] = "pass"
+
+
+    def evaluate_oas_syntax(self):
+
+        pass
+    
+
+    def execute(self):
+
+        self.evaluate_json_syntax()
+
+        self.evaluate_oas_syntax()
+
+        print(self.evaluations)
