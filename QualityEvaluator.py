@@ -89,6 +89,30 @@ class QualityEvaluator:
 
         else:
             self.evaluations["oas-version"] = {"result": "fail", "reason": "Unknown OAS version.", "version": "unknown"}
+
+
+    def evaluate_server_url(self):
+
+        server_urls = []
+
+        if "servers" in self.oas and len(self.oas["servers"]) > 0:
+            for server in self.oas["servers"]:
+                if "url" in server:
+                    server_urls.append(server["url"])
+
+        elif "host" in self.oas:
+            host = self.oas["host"]
+            base_path = self.oas.get("basePath", "")
+            schemes = self.oas.get("schemes", ["https"])
+
+            for scheme in schemes:
+                server_urls.append(f"{scheme}://{host}{base_path}")
+
+        if len(server_urls) > 0:
+            self.evaluations["server-url"] = {"result": "pass", "urls": server_urls}
+
+        else:
+            self.evaluations["server-url"] = {"result": "fail", "reason": "No server URL(s)."}
     
 
     def execute(self):
@@ -98,5 +122,7 @@ class QualityEvaluator:
         self.evaluate_validate_oas()
 
         self.evaluate_oas_version()
+
+        self.evaluate_server_url()
 
         print(json.dumps(self.evaluations, indent=4))
