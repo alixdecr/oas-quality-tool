@@ -1,5 +1,4 @@
-import language_tool_python, openapi_spec_validator, re, textstat
-from Utils import Utils
+import json, language_tool_python, openapi_spec_validator, re, textstat
 
 
 class QualityEvaluator:
@@ -8,7 +7,8 @@ class QualityEvaluator:
     def __init__(self, oas_path):
 
         #self.language_tool = language_tool_python.LanguageTool("en-US")
-        self.oas = Utils.load_json(oas_path)
+        self.oas_path = oas_path
+        self.oas = {}
         self.evaluations = {}
 
 
@@ -58,20 +58,37 @@ class QualityEvaluator:
 
     def evaluate_validate_json(self):
 
-        self.evaluations["validate-json"] = "fail"
+        try:
+            with open(self.oas_path, "r", encoding="utf-8-sig") as file: # maybe later check if unsupported utf8 is a bad thing for oas files?
+                self.oas = json.load(file)
+                self.evaluations["validate-json"] = {"result": "pass"}
 
-        if self.oas is not None:
-            self.evaluations["validate-json"] = "pass"
+        except Exception as e:
+            self.evaluations["validate-json"] = {"result": "fail", "reason": type(e).__name__}
 
 
     def evaluate_validate_oas(self):
 
         try:
             openapi_spec_validator.validate(self.oas)
-            self.evaluations["validate-oas"] = "pass"
+            self.evaluations["validate-oas"] = {"result": "pass"}
 
-        except:
-            self.evaluations["validate-oas"] = "fail"
+        except Exception as e:
+            self.evaluations["validate-oas"] = {"result": "fail", "reason": type(e).__name__}
+
+
+    def evaluate_oas_version(self):
+
+        if "openapi" in self.oas:
+            version = self.oas["openapi"]
+            self.evaluations["oas-version"] = {"result": "pass", "version": f"openapi-{version}"}
+
+        elif "swagger" in self.oas:
+            version = self.oas["swagger"]
+            self.evaluations["oas-version"] = {"result": "fail", "reason": "Outdated OAS version.", "version": f"swagger-{version}"}
+
+        else:
+            self.evaluations["oas-version"] = {"result": "fail", "reason": "Unknown OAS version.", "version": "unknown"}
     
 
     def execute(self):
@@ -80,4 +97,6 @@ class QualityEvaluator:
 
         self.evaluate_validate_oas()
 
-        print(self.evaluations)
+        self.evaluate_oas_version()
+
+        print(json.dumps(self.evaluations, indent=4))
