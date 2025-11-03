@@ -1,4 +1,4 @@
-import language_tool_python, re, textstat
+import language_tool_python, openapi_spec_validator, re, textstat
 from Utils import Utils
 
 
@@ -7,7 +7,7 @@ class QualityEvaluator:
 
     def __init__(self, oas_path):
 
-        self.language_tool = language_tool_python.LanguageTool("en-US")
+        #self.language_tool = language_tool_python.LanguageTool("en-US")
         self.oas = Utils.load_json(oas_path)
         self.evaluations = {}
 
@@ -56,23 +56,28 @@ class QualityEvaluator:
         }
     
 
-    def evaluate_json_syntax(self):
+    def evaluate_validate_json(self):
 
-        self.evaluations["json-syntax"] = "fail"
+        self.evaluations["validate-json"] = "fail"
 
         if self.oas is not None:
-            self.evaluations["json-syntax"] = "pass"
+            self.evaluations["validate-json"] = "pass"
 
 
-    def evaluate_oas_syntax(self):
+    def evaluate_validate_oas(self):
 
-        pass
+        try:
+            openapi_spec_validator.validate(self.oas)
+            self.evaluations["validate-oas"] = "pass"
+
+        except:
+            self.evaluations["validate-oas"] = "fail"
     
 
     def execute(self):
 
-        self.evaluate_json_syntax()
+        self.evaluate_validate_json()
 
-        self.evaluate_oas_syntax()
+        self.evaluate_validate_oas()
 
         print(self.evaluations)

@@ -1,0 +1,3 @@
+language_tool_python
+openapi-spec-validator
+textstat
