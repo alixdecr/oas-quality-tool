@@ -212,37 +212,72 @@ class QualityEvaluator:
             return
 
         nb_routes = 0
-        nb_missing = 0
-        nb_too_short = 0
-        nb_too_long = 0
-        nb_without_action = 0
+        nb_missing_descriptions = 0
+        nb_too_short_descriptions = 0
+        nb_too_long_descriptions = 0
+        nb_without_action_descriptions = 0
 
         for path_name, path_data in self.oas["paths"].items():
             for method_name, method_data in path_data.items():
                 nb_routes += 1
 
                 if "description" not in method_data:
-                    nb_missing += 1
+                    nb_missing_descriptions += 1
                     continue
 
                 description = re.sub(r"\s+", " ", method_data["description"]).strip()
                 nb_words = len(description.split())
 
                 if nb_words < 5:
-                    nb_too_short += 1
+                    nb_too_short_descriptions += 1
 
                 if nb_words > 150:
-                    nb_too_long += 1
+                    nb_too_long_descriptions += 1
 
                 verbs = ("get", "post", "put", "patch", "retrieve", "create", "read", "update", "delete", "list", "fetch", "remove", "return", "add")
                 if not any(verb in description.lower() for verb in verbs):
-                    nb_without_action += 1
+                    nb_without_action_descriptions += 1
 
-        if nb_missing > 0 or nb_too_short > 0 or nb_too_long > 0 or nb_without_action > 0:
-            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "Missing or invalid description(s).", "nb-routes": nb_routes, "nb-missing": nb_missing, "nb-too-short": nb_too_short, "nb-too-long": nb_too_long, "nb-without-action": nb_without_action}
+        if nb_missing_descriptions > 0 or nb_too_short_descriptions > 0 or nb_too_long_descriptions > 0 or nb_without_action_descriptions > 0:
+            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "Missing or invalid route descriptions.", "nb-routes": nb_routes, "nb-missing-descriptions": nb_missing_descriptions, "nb-too-short-descriptions": nb_too_short_descriptions, "nb-too-long-descriptions": nb_too_long_descriptions, "nb-without-action-descriptions": nb_without_action_descriptions}
             return
 
         self.evaluations["route-descriptions"] = {"result": "pass", "nb-routes": nb_routes}
+
+
+    def evaluate_response_descriptions(self):
+
+        if "paths" not in self.oas:
+            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "Missing paths field."}
+            return
+        
+        nb_routes_without_responses = 0
+        nb_responses = 0
+        nb_missing_descriptions = 0
+        nb_invalid_descriptions = 0
+        
+        for path_name, path_data in self.oas["paths"].items():
+            for method_name, method_data in path_data.items():
+                if "responses" not in method_data:
+                    nb_routes_without_responses += 1
+                    continue
+                
+                for response_name, response_data in method_data["responses"].items():
+                    nb_responses += 1
+
+                    if "description" not in response_data:
+                        nb_missing_descriptions += 1
+                        continue
+
+                    nb_words = len(response_data["description"].split())
+                    if nb_words < 2:
+                        nb_invalid_descriptions += 1
+
+        if nb_routes_without_responses > 0 or nb_missing_descriptions > 0 or nb_invalid_descriptions > 0:
+            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "Missing or invalid response descriptions in routes.", "nb-routes-without-responses": nb_routes_without_responses, "nb-responses": nb_responses, "nb-missing-descriptions": nb_missing_descriptions, "nb-invalid-descriptions": nb_invalid_descriptions}
+            return
+        
+        self.evaluations["response-descriptions"] = {"result": "pass", "nb-responses": nb_responses}
     
 
     def execute(self):
@@ -264,5 +299,7 @@ class QualityEvaluator:
         self.evaluate_api_contact()
 
         self.evaluate_route_descriptions()
+
+        self.evaluate_response_descriptions()
 
         print(json.dumps(self.evaluations, indent=4))
