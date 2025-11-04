@@ -1,4 +1,4 @@
-import json, language_tool_python, openapi_spec_validator, re, textstat
+import json, language_tool_python, openapi_spec_validator, re, requests, textstat
 
 
 class QualityEvaluator:
@@ -113,6 +113,80 @@ class QualityEvaluator:
 
         else:
             self.evaluations["server-url"] = {"result": "fail", "reason": "No server URL(s)."}
+
+
+    def evaluate_server_validity(self):
+
+        if self.evaluations["server-url"]["result"] == "fail":
+            self.evaluations["server-valid"] = {"result": "fail", "reason": "No server URL(s) to verify."}
+            return
+
+        server_urls = self.evaluations["server-url"]["urls"]
+
+        # if at least one of the server URLs is valid, pass the evaluation
+        for url in server_urls:
+            try:
+                response = requests.get(url, timeout=10)
+                self.evaluations["server-valid"] = {"result": "pass", "code": response.status_code}
+                break
+            except:
+                self.evaluations["server-valid"] = {"result": "fail", "reason": "Invalid server URL."}
+
+
+    def evaluate_secure_https(self):
+
+        server_urls = self.evaluations["server-url"]["urls"]
+
+        http_urls = []
+
+        for url in server_urls:
+            if not url.startswith("https"):
+                http_urls.append(url)
+
+        if len(http_urls) > 0:
+            self.evaluations["secure-https"] = {"result": "fail", "reason": "One or more server(s) contains outdated HTTP or a non-specified scheme.", "urls": http_urls}
+        else:
+            self.evaluations["secure-https"] = {"result": "pass"}
+
+
+    def evaluate_route_descriptions(self):
+
+        if "paths" not in self.oas:
+            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "Missing paths."}
+            return
+
+        nb_routes = 0
+        nb_missing = 0
+        nb_too_short = 0
+        nb_too_long = 0
+        nb_without_action = 0
+
+        for path_name, path_data in self.oas["paths"].items():
+            for method_name, method_data in path_data.items():
+                nb_routes += 1
+
+                if "description" not in method_data:
+                    nb_missing += 1
+                    continue
+
+                description = re.sub(r"\s+", " ", method_data["description"]).strip()
+                nb_words = len(description.split())
+
+                if nb_words < 5:
+                    nb_too_short += 1
+
+                if nb_words > 150:
+                    nb_too_long += 1
+
+                verbs = ("get", "post", "put", "patch", "retrieve", "create", "read", "update", "delete", "list", "fetch", "remove", "return", "add")
+                if not any(verb in description.lower() for verb in verbs):
+                    nb_without_action += 1
+
+        if nb_missing == 0 and nb_too_short == 0 and nb_too_long == 0 and nb_without_action == 0:
+            self.evaluations["route-descriptions"] = {"result": "pass", "nb-routes": nb_routes}
+
+        else:
+            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "Missing or invalid description(s).", "nb-routes": nb_routes, "nb-missing": nb_missing, "nb-too-short": nb_too_short, "nb-too-long": nb_too_long, "nb-without-action": nb_without_action}
     
 
     def execute(self):
@@ -124,5 +198,11 @@ class QualityEvaluator:
         self.evaluate_oas_version()
 
         self.evaluate_server_url()
+
+        self.evaluate_server_validity()
+
+        self.evaluate_secure_https()
+
+        self.evaluate_route_descriptions()
 
         print(json.dumps(self.evaluations, indent=4))
