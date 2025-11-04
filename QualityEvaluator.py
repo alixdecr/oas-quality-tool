@@ -1,4 +1,5 @@
 import json, language_tool_python, openapi_spec_validator, re, requests, textstat
+from datetime import datetime
 
 
 class QualityEvaluator:
@@ -9,7 +10,10 @@ class QualityEvaluator:
         #self.language_tool = language_tool_python.LanguageTool("en-US")
         self.oas_path = oas_path
         self.oas = {}
-        self.evaluations = {}
+        self.evaluations = {
+            "api-name": oas_path.split("/")[-1].replace(".json", ""),
+            "timestamp": str(datetime.now())
+        }
 
 
     def evaluate_description_quality(self, description):
@@ -112,13 +116,13 @@ class QualityEvaluator:
             self.evaluations["server-url"] = {"result": "pass", "urls": server_urls}
 
         else:
-            self.evaluations["server-url"] = {"result": "fail", "reason": "No server URL(s)."}
+            self.evaluations["server-url"] = {"result": "fail", "reason": "Missing server URL(s)."}
 
 
     def evaluate_server_validity(self):
 
         if self.evaluations["server-url"]["result"] == "fail":
-            self.evaluations["server-valid"] = {"result": "fail", "reason": "No server URL(s) to verify."}
+            self.evaluations["server-valid"] = {"result": "fail", "reason": "Missing server URL(s) to verify."}
             return
 
         server_urls = self.evaluations["server-url"]["urls"]
@@ -130,7 +134,7 @@ class QualityEvaluator:
                 self.evaluations["server-valid"] = {"result": "pass", "code": response.status_code}
                 break
             except:
-                self.evaluations["server-valid"] = {"result": "fail", "reason": "Invalid server URL."}
+                self.evaluations["server-valid"] = {"result": "fail", "reason": "Invalid server URL.", "url": url}
 
 
     def evaluate_secure_https(self):
@@ -149,10 +153,62 @@ class QualityEvaluator:
             self.evaluations["secure-https"] = {"result": "pass"}
 
 
+    def evaluate_api_description(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-description"] = {"result": "fail", "reason": "Missing info field."}
+            return
+        
+        if "description" not in self.oas["info"]:
+            self.evaluations["api-description"] = {"result": "fail", "reason": "Missing API description field."}
+            return
+        
+        description = re.sub(r"\s+", " ", self.oas["info"]["description"]).strip()
+        nb_words = len(description.split())
+
+        if nb_words < 10:
+            self.evaluations["api-description"] = {"result": "fail", "reason": "API description is too short."}
+
+        elif nb_words > 500:
+            self.evaluations["api-description"] = {"result": "fail", "reason": "API description is too long."}
+
+        else:
+            self.evaluations["api-description"] = {"result": "pass"}
+
+
+    def evaluate_api_contact(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "Missing info field."}
+            return
+
+        if "contact" not in self.oas["info"]:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "Missing contact field."}
+            return
+        
+        if self.oas["info"]["contact"] == {}:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "Empty contact field."}
+            return
+
+        if "email" not in self.oas["info"]["contact"] and "url" not in self.oas["info"]["contact"]:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "Missing email or url field."}
+            return
+        
+        if "email" in self.oas["info"]["contact"] and self.oas["info"]["contact"]["email"] == "":
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "Empty email field."}
+            return
+        
+        if "url" in self.oas["info"]["contact"] and self.oas["info"]["contact"]["url"] == "":
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "Empty url field."}
+            return
+
+        self.evaluations["api-contact"] = {"result": "pass", "contact": self.oas["info"]["contact"]}
+
+
     def evaluate_route_descriptions(self):
 
         if "paths" not in self.oas:
-            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "Missing paths."}
+            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "Missing paths field."}
             return
 
         nb_routes = 0
@@ -182,11 +238,11 @@ class QualityEvaluator:
                 if not any(verb in description.lower() for verb in verbs):
                     nb_without_action += 1
 
-        if nb_missing == 0 and nb_too_short == 0 and nb_too_long == 0 and nb_without_action == 0:
-            self.evaluations["route-descriptions"] = {"result": "pass", "nb-routes": nb_routes}
-
-        else:
+        if nb_missing > 0 or nb_too_short > 0 or nb_too_long > 0 or nb_without_action > 0:
             self.evaluations["route-descriptions"] = {"result": "fail", "reason": "Missing or invalid description(s).", "nb-routes": nb_routes, "nb-missing": nb_missing, "nb-too-short": nb_too_short, "nb-too-long": nb_too_long, "nb-without-action": nb_without_action}
+            return
+
+        self.evaluations["route-descriptions"] = {"result": "pass", "nb-routes": nb_routes}
     
 
     def execute(self):
@@ -202,6 +258,10 @@ class QualityEvaluator:
         self.evaluate_server_validity()
 
         self.evaluate_secure_https()
+
+        self.evaluate_api_description()
+
+        self.evaluate_api_contact()
 
         self.evaluate_route_descriptions()
 
