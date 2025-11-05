@@ -54,6 +54,133 @@ class QualityEvaluator:
             self.evaluations["oas-version"] = {"result": "fail", "reason": "unknown OAS version", "version": "unknown"}
 
 
+    def evaluate_api_title(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-title"] = {"result": "fail", "reason": "missing info field"}
+            return
+        
+        if "title" not in self.oas["info"]:
+            self.evaluations["api-title"] = {"result": "fail", "reason": "missing title field"}
+            return
+        
+        title = self.oas["info"]["title"]
+        
+        if not self.has_content(title):
+            self.evaluations["api-title"] = {"result": "fail", "reason": "empty title field"}
+            return
+        
+        self.evaluations["api-title"] = {"result": "pass", "title": title}
+
+
+    def evaluate_api_description(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-description"] = {"result": "fail", "reason": "missing info field"}
+            return
+        
+        if "description" not in self.oas["info"]:
+            self.evaluations["api-description"] = {"result": "fail", "reason": "missing description field"}
+            return
+        
+        description = self.oas["info"]["description"]
+        constraints = config["descriptions"]["api"]
+        violations = self.check_description(description, constraints)
+
+        if len(violations) > 0:
+            self.evaluations["api-description"] = {"result": "fail", "reason": ", ".join(violations)}
+        else:
+            self.evaluations["api-description"] = {"result": "pass"}
+
+
+    def evaluate_api_contact(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing info field"}
+            return
+
+        if "contact" not in self.oas["info"]:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing contact field"}
+            return
+        
+        contact = self.oas["info"]["contact"]
+        
+        if contact == {}:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty contact field."}
+            return
+
+        if "email" not in contact and "url" not in contact:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing email or url field"}
+            return
+        
+        if "email" in contact and not self.has_content(contact["email"]):
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty email field"}
+            return
+        
+        if "url" in contact and not self.has_content(contact["url"]):
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty url field"}
+            return
+
+        self.evaluations["api-contact"] = {"result": "pass", "contact": contact}
+
+
+    def evaluate_api_version(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-version"] = {"result": "fail", "reason": "missing info field"}
+            return
+        
+        if "version" not in self.oas["info"]:
+            self.evaluations["api-version"] = {"result": "fail", "reason": "missing version field"}
+            return
+        
+        version = self.oas["info"]["version"]
+
+        if not self.has_content(version):
+            self.evaluations["api-version"] = {"result": "fail", "reason": "empty version field"}
+            return
+        
+        self.evaluations["api-version"] = {"result": "pass", "version": version}
+
+
+    def evaluate_api_license(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-license"] = {"result": "fail", "reason": "missing info field"}
+            return
+        
+        if "license" not in self.oas["info"]:
+            self.evaluations["api-license"] = {"result": "fail", "reason": "missing license field"}
+            return
+        
+        license = self.oas["info"]["license"]
+
+        if license == {}:
+            self.evaluations["api-license"] = {"result": "fail", "reason": "empty license field"}
+            return
+        
+        self.evaluations["api-license"] = {"result": "pass", "license": license}
+
+
+    def evaluate_api_terms(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-terms"] = {"result": "fail", "reason": "missing info field"}
+            return
+        
+        if "termsOfService" not in self.oas["info"]:
+            self.evaluations["api-terms"] = {"result": "fail", "reason": "missing termsOfService field"}
+            return
+        
+        terms = self.oas["info"]["termsOfService"]
+
+        if terms == {}:
+            self.evaluations["api-terms"] = {"result": "fail", "reason": "empty termsOfService field"}
+            return
+        
+        self.evaluations["api-terms"] = {"result": "pass", "terms": terms}
+
+
     def evaluate_server_url(self):
 
         server_urls = self.get_oas_servers()
@@ -105,55 +232,6 @@ class QualityEvaluator:
             self.evaluations["secure-https"] = {"result": "fail", "reason": "missing or outdated schemes", "nb-http": nb_http, "nb-missing": nb_missing, "urls": server_urls}
         else:
             self.evaluations["secure-https"] = {"result": "pass", "urls": server_urls}
-
-
-    def evaluate_api_description(self):
-
-        if "info" not in self.oas:
-            self.evaluations["api-description"] = {"result": "fail", "reason": "missing info field"}
-            return
-        
-        if "description" not in self.oas["info"]:
-            self.evaluations["api-description"] = {"result": "fail", "reason": "missing description field"}
-            return
-        
-        description = self.oas["info"]["description"]
-        constraints = config["descriptions"]["api"]
-        violations = self.check_description(description, constraints)
-
-        if len(violations) > 0:
-            self.evaluations["api-description"] = {"result": "fail", "reason": ", ".join(violations)}
-        else:
-            self.evaluations["api-description"] = {"result": "pass"}
-
-
-    def evaluate_api_contact(self):
-
-        if "info" not in self.oas:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing info field"}
-            return
-
-        if "contact" not in self.oas["info"]:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing contact field"}
-            return
-        
-        if self.oas["info"]["contact"] == {}:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty contact field."}
-            return
-
-        if "email" not in self.oas["info"]["contact"] and "url" not in self.oas["info"]["contact"]:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing email or url field"}
-            return
-        
-        if "email" in self.oas["info"]["contact"] and self.oas["info"]["contact"]["email"] == "":
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty email field"}
-            return
-        
-        if "url" in self.oas["info"]["contact"] and self.oas["info"]["contact"]["url"] == "":
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty url field"}
-            return
-
-        self.evaluations["api-contact"] = {"result": "pass", "contact": self.oas["info"]["contact"]}
 
 
     def evaluate_route_descriptions(self):
@@ -329,7 +407,7 @@ class QualityEvaluator:
         nb_words = len(description.split())
         violations = []
 
-        if description == "" or description == " ":
+        if not self.has_content(description):
             violations.append("empty description")
 
         if "min-words" in constraints and nb_words < constraints["min-words"]:
@@ -342,30 +420,33 @@ class QualityEvaluator:
             violations.append("no keywords in description")
 
         return violations
+    
+
+    def has_content(self, str):
+
+        return bool(str and str.strip())
         
 
     def execute(self):
 
         self.evaluate_validate_json()
-
         self.evaluate_validate_oas()
 
         self.evaluate_oas_version()
 
+        self.evaluate_api_title()
+        self.evaluate_api_description()
+        self.evaluate_api_contact()
+        self.evaluate_api_version()
+        self.evaluate_api_license()
+        self.evaluate_api_terms()
+
         self.evaluate_server_url()
-
         self.evaluate_server_validity()
-
         self.evaluate_secure_https()
 
-        self.evaluate_api_description()
-
-        self.evaluate_api_contact()
-
         self.evaluate_route_descriptions()
-
         self.evaluate_response_descriptions()
-
         self.evaluate_parameter_descriptions()
 
         # TODO
