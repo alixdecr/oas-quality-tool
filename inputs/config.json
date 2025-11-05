@@ -1,13 +1,22 @@
 {
     "file-encoding": "utf-8-sig",
 
-    "desc-api-min-words": 10,
-    "desc-api-max-words": 500,
-
-    "desc-route-min-words": 5,
-    "desc-route-max-words": 150,
-    "desc-route-keywords": ["get", "post", "put", "patch", "retrieve", "create", "read", "update", "delete", "list", "fetch", "remove", "return", "add"],
-
-    "desc-response-min-words": 2,
-    "desc-response-max-words": 50
+    "descriptions": {
+        "api":{
+            "min-words": 10,
+            "max-words": 500
+        },
+        "routes": {
+            "min-words": 5,
+            "max-words": 100,
+            "keywords": ["get", "post", "put", "patch", "retrieve", "create", "read", "update", "delete", "list", "fetch", "remove", "return", "add", "find", "provide"],
+            "invalid-threshold": 0.2
+        },
+        "responses": {
+            "min-words": 1,
+            "max-words": 20,
+            "keywords": ["success", "invalid", "error", "ok", "created", "no content", "bad request", "unauthorized", "forbidden", "not found", "not acceptable", "content too large", "unsupported media type", "unprocessable content", "too many requests"],
+            "invalid-threshold": 0.2
+        }
+    }
 }

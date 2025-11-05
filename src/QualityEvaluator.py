@@ -22,7 +22,7 @@ class QualityEvaluator:
     def evaluate_validate_json(self):
 
         try:
-            with open(self.oas_path, "r", encoding=config["file-encoding"]) as file: # maybe later check if unsupported utf8 is a bad thing for oas files?
+            with open(self.oas_path, "r", encoding=config["file-encoding"]) as file:
                 self.oas = json.load(file)
                 self.evaluations["validate-json"] = {"result": "pass"}
 
@@ -48,13 +48,211 @@ class QualityEvaluator:
 
         elif "swagger" in self.oas:
             version = self.oas["swagger"]
-            self.evaluations["oas-version"] = {"result": "fail", "reason": "Outdated OAS version.", "version": f"swagger-{version}"}
+            self.evaluations["oas-version"] = {"result": "fail", "reason": "outdated OAS version", "version": f"swagger-{version}"}
 
         else:
-            self.evaluations["oas-version"] = {"result": "fail", "reason": "Unknown OAS version.", "version": "unknown"}
+            self.evaluations["oas-version"] = {"result": "fail", "reason": "unknown OAS version", "version": "unknown"}
 
 
     def evaluate_server_url(self):
+
+        server_urls = self.get_oas_servers()
+
+        if len(server_urls) > 0:
+            self.evaluations["server-url"] = {"result": "pass", "urls": server_urls}
+
+        else:
+            self.evaluations["server-url"] = {"result": "fail", "reason": "missing server URL"}
+
+
+    def evaluate_server_validity(self):
+
+        server_urls = self.get_oas_servers()
+
+        if len(server_urls) == 0:
+            self.evaluations["server-valid"] = {"result": "fail", "reason": "missing server URL"}
+            return
+
+        # if at least one of the server URLs is valid, pass the evaluation
+        for url in server_urls:
+            try:
+                response = requests.get(url, timeout=10)
+                self.evaluations["server-valid"] = {"result": "pass", "code": response.status_code, "urls": server_urls}
+                break
+            except:
+                self.evaluations["server-valid"] = {"result": "fail", "reason": "invalid server URL", "url": url}
+
+
+    def evaluate_secure_https(self):
+
+        server_urls = self.get_oas_servers()
+
+        if len(server_urls) == 0:
+            self.evaluations["secure-https"] = {"result": "fail", "reason": "missing server URL"}
+            return
+
+        nb_http = 0
+        nb_missing = 0
+
+        for url in server_urls:
+            if not url.startswith("https"):
+                if not url.startswith("http"):
+                    nb_missing += 1
+                else:
+                    nb_http += 1
+
+        if nb_http > 0 or nb_missing > 0:
+            self.evaluations["secure-https"] = {"result": "fail", "reason": "missing or outdated schemes", "nb-http": nb_http, "nb-missing": nb_missing, "urls": server_urls}
+        else:
+            self.evaluations["secure-https"] = {"result": "pass", "urls": server_urls}
+
+
+    def evaluate_api_description(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-description"] = {"result": "fail", "reason": "missing info field"}
+            return
+        
+        if "description" not in self.oas["info"]:
+            self.evaluations["api-description"] = {"result": "fail", "reason": "missing description field"}
+            return
+        
+        description = self.oas["info"]["description"]
+        constraints = config["descriptions"]["api"]
+        violations = self.check_description(description, constraints)
+
+        if len(violations) > 0:
+            self.evaluations["api-description"] = {"result": "fail", "reason": ", ".join(violations)}
+        else:
+            self.evaluations["api-description"] = {"result": "pass"}
+
+
+    def evaluate_api_contact(self):
+
+        if "info" not in self.oas:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing info field"}
+            return
+
+        if "contact" not in self.oas["info"]:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing contact field"}
+            return
+        
+        if self.oas["info"]["contact"] == {}:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty contact field."}
+            return
+
+        if "email" not in self.oas["info"]["contact"] and "url" not in self.oas["info"]["contact"]:
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing email or url field"}
+            return
+        
+        if "email" in self.oas["info"]["contact"] and self.oas["info"]["contact"]["email"] == "":
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty email field"}
+            return
+        
+        if "url" in self.oas["info"]["contact"] and self.oas["info"]["contact"]["url"] == "":
+            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty url field"}
+            return
+
+        self.evaluations["api-contact"] = {"result": "pass", "contact": self.oas["info"]["contact"]}
+
+
+    def evaluate_route_descriptions(self):
+
+        if "paths" not in self.oas:
+            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "missing paths field"}
+            return
+        
+        counters = {
+            "nb-routes": 0,
+            "nb-desc-missing": 0,
+            "nb-desc-invalid" : 0,
+            "invalid-details": {}
+        }
+        constraints = config["descriptions"]["routes"]
+
+        for path in self.oas["paths"]:
+            for method in self.oas["paths"][path]:
+                route_data = self.oas["paths"][path][method]
+                counters["nb-routes"] += 1
+
+                if "description" not in route_data:
+                    counters["nb-desc-missing"] += 1
+                    continue
+
+                description = route_data["description"]
+                violations = self.check_description(description, constraints)
+
+                if len(violations) > 0:
+                    counters["nb-desc-invalid"] += 1
+
+                    for id in violations:
+                        if id not in counters["invalid-details"]:
+                            counters["invalid-details"][id] = 0
+                        counters["invalid-details"][id] += 1
+
+        percentage = (counters["nb-desc-missing"] + counters["nb-desc-invalid"]) / counters["nb-routes"]
+        threshold = constraints["invalid-threshold"]
+
+        if percentage > threshold:
+            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "too many missing or invalid descriptions", "percentage": percentage, "threshold": threshold, **counters}
+        else:
+            self.evaluations["route-descriptions"] = {"result": "pass", "percentage": percentage, "threshold": threshold, **counters}
+
+
+    def evaluate_response_descriptions(self):
+
+        if "paths" not in self.oas:
+            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "Missing paths field."}
+            return
+        
+        counters = {
+            "nb-routes": 0,
+            "nb-routes-without-responses": 0,
+            "nb-responses": 0,
+            "nb-desc-missing": 0,
+            "nb-desc-invalid": 0,
+            "invalid-details": {}
+        }
+        constraints = config["descriptions"]["responses"]
+        
+        for path in self.oas["paths"]:
+            for method in self.oas["paths"][path]:
+                route_data = self.oas["paths"][path][method]
+                counters["nb-routes"] += 1
+
+                if "responses" not in route_data:
+                    counters["nb-routes-without-responses"] += 1
+                    continue
+
+                for response in route_data["responses"]:
+                    response_data = route_data["responses"][response]
+                    counters["nb-responses"] += 1
+
+                    if "description" not in response_data:
+                        counters["nb-desc-missing"] += 1
+                        continue
+
+                    description = response_data["description"]
+                    violations = self.check_description(description, constraints)
+
+                    if len(violations) > 0:
+                        counters["nb-desc-invalid"] += 1
+
+                        for id in violations:
+                            if id not in counters["invalid-details"]:
+                                counters["invalid-details"][id] = 0
+                            counters["invalid-details"][id] += 1
+
+        percentage = (counters["nb-desc-missing"] + counters["nb-desc-invalid"]) / counters["nb-responses"]
+        threshold = constraints["invalid-threshold"]
+
+        if percentage > threshold:
+            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "too many missing or invalid descriptions", "percentage": percentage, "threshold": threshold, **counters}
+        else:
+            self.evaluations["response-descriptions"] = {"result": "pass", "percentage": percentage, "threshold": threshold, **counters}
+
+
+    def get_oas_servers(self):
 
         server_urls = []
 
@@ -71,173 +269,29 @@ class QualityEvaluator:
             for scheme in schemes:
                 server_urls.append(f"{scheme}://{host}{base_path}")
 
-        if len(server_urls) > 0:
-            self.evaluations["server-url"] = {"result": "pass", "urls": server_urls}
-
-        else:
-            self.evaluations["server-url"] = {"result": "fail", "reason": "Missing server URL(s)."}
-
-
-    def evaluate_server_validity(self):
-
-        if self.evaluations["server-url"]["result"] == "fail":
-            self.evaluations["server-valid"] = {"result": "fail", "reason": "Missing server URL(s) to verify."}
-            return
-
-        server_urls = self.evaluations["server-url"]["urls"]
-
-        # if at least one of the server URLs is valid, pass the evaluation
-        for url in server_urls:
-            try:
-                response = requests.get(url, timeout=10)
-                self.evaluations["server-valid"] = {"result": "pass", "code": response.status_code}
-                break
-            except:
-                self.evaluations["server-valid"] = {"result": "fail", "reason": "Invalid server URL.", "url": url}
-
-
-    def evaluate_secure_https(self):
-
-        server_urls = self.evaluations["server-url"]["urls"]
-
-        http_urls = []
-
-        for url in server_urls:
-            if not url.startswith("https"):
-                http_urls.append(url)
-
-        if len(http_urls) > 0:
-            self.evaluations["secure-https"] = {"result": "fail", "reason": "One or more server(s) contains outdated HTTP or a non-specified scheme.", "urls": http_urls}
-        else:
-            self.evaluations["secure-https"] = {"result": "pass"}
-
-
-    def evaluate_api_description(self):
-
-        if "info" not in self.oas:
-            self.evaluations["api-description"] = {"result": "fail", "reason": "Missing info field."}
-            return
-        
-        if "description" not in self.oas["info"]:
-            self.evaluations["api-description"] = {"result": "fail", "reason": "Missing API description field."}
-            return
-        
-        description = re.sub(r"\s+", " ", self.oas["info"]["description"]).strip()
-        nb_words = len(description.split())
-
-        if nb_words < config["desc-api-min-words"]:
-            self.evaluations["api-description"] = {"result": "fail", "reason": "API description is too short."}
-
-        elif nb_words > config["desc-api-max-words"]:
-            self.evaluations["api-description"] = {"result": "fail", "reason": "API description is too long."}
-
-        else:
-            self.evaluations["api-description"] = {"result": "pass"}
-
-
-    def evaluate_api_contact(self):
-
-        if "info" not in self.oas:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "Missing info field."}
-            return
-
-        if "contact" not in self.oas["info"]:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "Missing contact field."}
-            return
-        
-        if self.oas["info"]["contact"] == {}:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "Empty contact field."}
-            return
-
-        if "email" not in self.oas["info"]["contact"] and "url" not in self.oas["info"]["contact"]:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "Missing email or url field."}
-            return
-        
-        if "email" in self.oas["info"]["contact"] and self.oas["info"]["contact"]["email"] == "":
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "Empty email field."}
-            return
-        
-        if "url" in self.oas["info"]["contact"] and self.oas["info"]["contact"]["url"] == "":
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "Empty url field."}
-            return
-
-        self.evaluations["api-contact"] = {"result": "pass", "contact": self.oas["info"]["contact"]}
-
-
-    def evaluate_route_descriptions(self):
-
-        if "paths" not in self.oas:
-            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "Missing paths field."}
-            return
-
-        nb_routes = 0
-        nb_missing_descriptions = 0
-        nb_too_short_descriptions = 0
-        nb_too_long_descriptions = 0
-        nb_without_action_descriptions = 0
-
-        for path_name, path_data in self.oas["paths"].items():
-            for method_name, method_data in path_data.items():
-                nb_routes += 1
-
-                if "description" not in method_data:
-                    nb_missing_descriptions += 1
-                    continue
-
-                description = re.sub(r"\s+", " ", method_data["description"]).strip()
-                nb_words = len(description.split())
-
-                if nb_words < config["desc-route-min-words"]:
-                    nb_too_short_descriptions += 1
-
-                if nb_words > config["desc-route-max-words"]:
-                    nb_too_long_descriptions += 1
-
-                verbs = config["desc-route-keywords"]
-                if not any(verb in description.lower() for verb in verbs):
-                    nb_without_action_descriptions += 1
-
-        if nb_missing_descriptions > 0 or nb_too_short_descriptions > 0 or nb_too_long_descriptions > 0 or nb_without_action_descriptions > 0:
-            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "Missing or invalid route descriptions.", "nb-routes": nb_routes, "nb-missing-descriptions": nb_missing_descriptions, "nb-too-short-descriptions": nb_too_short_descriptions, "nb-too-long-descriptions": nb_too_long_descriptions, "nb-without-action-descriptions": nb_without_action_descriptions}
-            return
-
-        self.evaluations["route-descriptions"] = {"result": "pass", "nb-routes": nb_routes}
-
-
-    def evaluate_response_descriptions(self):
-
-        if "paths" not in self.oas:
-            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "Missing paths field."}
-            return
-        
-        nb_routes_without_responses = 0
-        nb_responses = 0
-        nb_missing_descriptions = 0
-        nb_invalid_descriptions = 0
-        
-        for path_name, path_data in self.oas["paths"].items():
-            for method_name, method_data in path_data.items():
-                if "responses" not in method_data:
-                    nb_routes_without_responses += 1
-                    continue
-                
-                for response_name, response_data in method_data["responses"].items():
-                    nb_responses += 1
-
-                    if "description" not in response_data:
-                        nb_missing_descriptions += 1
-                        continue
-
-                    nb_words = len(response_data["description"].split())
-                    if nb_words < config["desc-response-min-words"]:
-                        nb_invalid_descriptions += 1
-
-        if nb_routes_without_responses > 0 or nb_missing_descriptions > 0 or nb_invalid_descriptions > 0:
-            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "Missing or invalid response descriptions in routes.", "nb-routes-without-responses": nb_routes_without_responses, "nb-responses": nb_responses, "nb-missing-descriptions": nb_missing_descriptions, "nb-invalid-descriptions": nb_invalid_descriptions}
-            return
-        
-        self.evaluations["response-descriptions"] = {"result": "pass", "nb-responses": nb_responses}
+        return server_urls
     
+
+    def check_description(self, description, constraints):
+
+        description = re.sub(r"\s+", " ", description).strip().lower()
+        nb_words = len(description.split())
+        violations = []
+
+        if description == "" or description == " ":
+            violations.append("empty description")
+
+        if "min-words" in constraints and nb_words < constraints["min-words"]:
+            violations.append("description too short")
+
+        if "max-words" in constraints and nb_words > constraints["max-words"]:
+            violations.append("description too long")
+
+        if "keywords" in constraints and not any(keyword in description for keyword in constraints["keywords"]):
+            violations.append("no keywords in description")
+
+        return violations
+        
 
     def execute(self):
 
