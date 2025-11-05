@@ -1,5 +1,9 @@
-import json, language_tool_python, openapi_spec_validator, re, requests, textstat
+import json, openapi_spec_validator, re, requests
+from config import get_config
 from datetime import datetime
+
+
+config = get_config()
 
 
 class QualityEvaluator:
@@ -7,7 +11,6 @@ class QualityEvaluator:
 
     def __init__(self, oas_path):
 
-        #self.language_tool = language_tool_python.LanguageTool("en-US")
         self.oas_path = oas_path
         self.oas = {}
         self.evaluations = {
@@ -16,54 +19,10 @@ class QualityEvaluator:
         }
 
 
-    def evaluate_description_quality(self, description):
-
-        score = 0
-        feedback = []
-
-        # replace any whitespace (line break, tab, etc.) with a single space
-        description = re.sub(r"\s+", " ", description).strip()
-
-        # description length
-        nb_words = len(description.split())
-        if nb_words < 5:
-            feedback.append(("Description is too short."))
-        elif nb_words > 100:
-            feedback.append(("Description is too long."))
-        else:
-            score += 1
-
-        # grammar and spelling
-        matches = self.language_tool.check(description)
-        if len(matches) > 0:
-            feedback.append(("Description contains grammar and/or spelling issue(s)."))
-        else:
-            score += 1
-
-        # readability
-        readability = textstat.flesch_reading_ease(description)
-        if readability < 30:
-            feedback.append(("Description is not readable enough."))
-        else:
-            score += 1
-
-        # action verb presence
-        verbs = ("get", "post", "put", "patch", "retrieve", "create", "read", "update", "delete", "list", "fetch", "remove", "return", "add")
-        if not any(verb in description.lower() for verb in verbs):
-            feedback.append(("Description does not contain any action verb."))
-        else:
-            score += 1
-
-        return {
-            "score": score,
-            "feedback": feedback
-        }
-    
-
     def evaluate_validate_json(self):
 
         try:
-            with open(self.oas_path, "r", encoding="utf-8-sig") as file: # maybe later check if unsupported utf8 is a bad thing for oas files?
+            with open(self.oas_path, "r", encoding=config["file-encoding"]) as file: # maybe later check if unsupported utf8 is a bad thing for oas files?
                 self.oas = json.load(file)
                 self.evaluations["validate-json"] = {"result": "pass"}
 
@@ -166,10 +125,10 @@ class QualityEvaluator:
         description = re.sub(r"\s+", " ", self.oas["info"]["description"]).strip()
         nb_words = len(description.split())
 
-        if nb_words < 10:
+        if nb_words < config["desc-api-min-words"]:
             self.evaluations["api-description"] = {"result": "fail", "reason": "API description is too short."}
 
-        elif nb_words > 500:
+        elif nb_words > config["desc-api-max-words"]:
             self.evaluations["api-description"] = {"result": "fail", "reason": "API description is too long."}
 
         else:
@@ -228,13 +187,13 @@ class QualityEvaluator:
                 description = re.sub(r"\s+", " ", method_data["description"]).strip()
                 nb_words = len(description.split())
 
-                if nb_words < 5:
+                if nb_words < config["desc-route-min-words"]:
                     nb_too_short_descriptions += 1
 
-                if nb_words > 150:
+                if nb_words > config["desc-route-max-words"]:
                     nb_too_long_descriptions += 1
 
-                verbs = ("get", "post", "put", "patch", "retrieve", "create", "read", "update", "delete", "list", "fetch", "remove", "return", "add")
+                verbs = config["desc-route-keywords"]
                 if not any(verb in description.lower() for verb in verbs):
                     nb_without_action_descriptions += 1
 
@@ -270,7 +229,7 @@ class QualityEvaluator:
                         continue
 
                     nb_words = len(response_data["description"].split())
-                    if nb_words < 2:
+                    if nb_words < config["desc-response-min-words"]:
                         nb_invalid_descriptions += 1
 
         if nb_routes_without_responses > 0 or nb_missing_descriptions > 0 or nb_invalid_descriptions > 0:

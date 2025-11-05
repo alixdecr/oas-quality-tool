@@ -3,7 +3,7 @@ from QualityEvaluator import QualityEvaluator
 
 def main():
 
-    evaluator = QualityEvaluator("inputs/amadeus-hotel.json")
+    evaluator = QualityEvaluator("inputs/openapi/amadeus-hotel.json")
     evaluator.execute()
 
 

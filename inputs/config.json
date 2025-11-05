@@ -1,0 +1,13 @@
+{
+    "file-encoding": "utf-8-sig",
+
+    "desc-api-min-words": 10,
+    "desc-api-max-words": 500,
+
+    "desc-route-min-words": 5,
+    "desc-route-max-words": 150,
+    "desc-route-keywords": ["get", "post", "put", "patch", "retrieve", "create", "read", "update", "delete", "list", "fetch", "remove", "return", "add"],
+
+    "desc-response-min-words": 2,
+    "desc-response-max-words": 50
+}
