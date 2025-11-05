@@ -2,20 +2,29 @@
     "file-encoding": "utf-8-sig",
 
     "descriptions": {
+
         "api":{
             "min-words": 10,
             "max-words": 500
         },
+
         "routes": {
             "min-words": 5,
             "max-words": 100,
             "keywords": ["get", "post", "put", "patch", "retrieve", "create", "read", "update", "delete", "list", "fetch", "remove", "return", "add", "find", "provide"],
             "invalid-threshold": 0.2
         },
+
         "responses": {
             "min-words": 1,
             "max-words": 20,
             "keywords": ["success", "invalid", "error", "ok", "created", "no content", "bad request", "unauthorized", "forbidden", "not found", "not acceptable", "content too large", "unsupported media type", "unprocessable content", "too many requests"],
+            "invalid-threshold": 0.2
+        },
+
+        "parameters": {
+            "min-words": 5,
+            "max-words": 100,
             "invalid-threshold": 0.2
         }
     }

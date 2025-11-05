@@ -202,7 +202,7 @@ class QualityEvaluator:
     def evaluate_response_descriptions(self):
 
         if "paths" not in self.oas:
-            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "Missing paths field."}
+            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "missing paths field"}
             return
         
         counters = {
@@ -250,6 +250,57 @@ class QualityEvaluator:
             self.evaluations["response-descriptions"] = {"result": "fail", "reason": "too many missing or invalid descriptions", "percentage": percentage, "threshold": threshold, **counters}
         else:
             self.evaluations["response-descriptions"] = {"result": "pass", "percentage": percentage, "threshold": threshold, **counters}
+
+
+    def evaluate_parameter_descriptions(self):
+
+        if "paths" not in self.oas:
+            self.evaluations["parameter-descriptions"] = {"result": "fail", "reason": "missing paths field"}
+            return
+        
+        counters = {
+            "nb-routes": 0,
+            "nb-parameters": 0,
+            "nb-desc-missing": 0,
+            "nb-desc-invalid": 0,
+            "invalid-details": {}
+        }
+        constraints = config["descriptions"]["parameters"]
+
+        for path in self.oas["paths"]:
+            for method in self.oas["paths"][path]:
+                route_data = self.oas["paths"][path][method]
+                counters["nb-routes"] += 1
+
+                if not "parameters" in route_data:
+                    continue
+                
+                for parameter in route_data["parameters"]:
+                    counters["nb-parameters"] += 1
+
+                    if "description" not in parameter:
+                        counters["nb-desc-missing"] += 1
+                        continue
+
+                    description = parameter["description"]
+                    violations = self.check_description(description, constraints)
+
+                    if len(violations) > 0:
+                        counters["nb-desc-invalid"] += 1
+
+                        for id in violations:
+                            if id not in counters["invalid-details"]:
+                                counters["invalid-details"][id] = 0
+                            counters["invalid-details"][id] += 1
+
+
+        percentage = (counters["nb-desc-missing"] + counters["nb-desc-invalid"]) / counters["nb-parameters"]
+        threshold = constraints["invalid-threshold"]
+
+        if percentage > threshold:
+            self.evaluations["parameter-descriptions"] = {"result": "fail", "reason": "too many missing or invalid descriptions", "percentage": percentage, "threshold": threshold, **counters}
+        else:
+            self.evaluations["parameter-descriptions"] = {"result": "pass", "percentage": percentage, "threshold": threshold, **counters}
 
 
     def get_oas_servers(self):
@@ -314,5 +365,12 @@ class QualityEvaluator:
         self.evaluate_route_descriptions()
 
         self.evaluate_response_descriptions()
+
+        self.evaluate_parameter_descriptions()
+
+        # TODO
+        # self.evaluate_response_examples()
+        # self.evaluate_parameter_examples()
+        # ...
 
         print(json.dumps(self.evaluations, indent=4))
