@@ -80,13 +80,9 @@ class QualityEvaluator:
             self.add_evaluation("fail", {"reason": "missing info field"})
             return
         
-        if "description" not in self.oas["info"]:
-            self.add_evaluation("fail", {"reason": "missing description field"})
-            return
-        
-        description = self.oas["info"]["description"]
         constraints = config["descriptions"]["api"]
-        violations = self.check_description(description, constraints)
+        
+        violations = self.check_description(self.oas["info"], constraints)
 
         if len(violations) > 0:
             self.add_evaluation("fail", {"reason": ", ".join(violations)})
@@ -390,7 +386,7 @@ class QualityEvaluator:
                         media_data = response_data["content"][media]
                         counters["nb-media-total"] += 1
 
-                        if ("examples" in media_data and media_data["examples"] != {}) or ("example" in media_data and media_data["example"] != {}):
+                        if media_data.get("examples") or media_data.get("example"):
                             counters["nb-media-with-valid-example"] += 1
 
         percentage = counters["nb-media-with-valid-example"] / counters["nb-media-total"]
@@ -398,6 +394,40 @@ class QualityEvaluator:
 
         if percentage < min_percentage:
             self.add_evaluation("fail", {"reason": "not enough valid response examples", "percentage": percentage, "min-percentage": min_percentage, **counters})
+        else:
+            self.add_evaluation("pass", {"percentage": percentage, "min-percentage": min_percentage, **counters})
+
+
+    def evaluate_parameter_examples(self):
+
+        if "paths" not in self.oas:
+            self.add_evaluation("fail", {"reason": "missing paths field"})
+            return
+        
+        counters = {
+            "nb-parameters-total": 0,
+            "nb-parameters-with-valid-example": 0
+        }
+        constraints = config["examples"]["parameters"]
+
+        for path in self.oas["paths"]:
+            for method in self.oas["paths"][path]:
+                route_data = self.oas["paths"][path][method]
+
+                if not "parameters" in route_data:
+                    continue
+                
+                for parameter_data in route_data["parameters"]:
+                    counters["nb-parameters-total"] += 1
+
+                    if parameter_data.get("examples") or parameter_data.get("example"):
+                        counters["nb-parameters-with-valid-example"] += 1
+
+        percentage = counters["nb-parameters-with-valid-example"] / counters["nb-parameters-total"]
+        min_percentage = constraints["min-percentage"]
+
+        if percentage < min_percentage:
+            self.add_evaluation("fail", {"reason": "not enough valid parameter examples", "percentage": percentage, "min-percentage": min_percentage, **counters})
         else:
             self.add_evaluation("pass", {"percentage": percentage, "min-percentage": min_percentage, **counters})
 
@@ -514,10 +544,6 @@ class QualityEvaluator:
 
         # examples
         self.evaluate_response_examples()
-
-        # TODO
-        # self.evaluate_response_examples()
-        # self.evaluate_parameter_examples()
-        # ...
+        self.evaluate_parameter_examples()
 
         print(json.dumps(self.evaluations, indent=4))

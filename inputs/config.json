@@ -33,6 +33,10 @@
 
         "responses": {
             "min-percentage": 0.8
+        },
+
+        "parameters": {
+            "min-percentage": 0.8
         }
     },
 
@@ -69,7 +73,8 @@
         ],
 
         "examples": [
-            "evaluate-response-examples"
+            "evaluate-response-examples",
+            "evaluate-parameter-examples"
         ]
     }
 }
