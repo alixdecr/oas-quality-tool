@@ -9,13 +9,25 @@ config = get_config()
 class QualityEvaluator:
 
 
-    def __init__(self, oas_path):
+    def __init__(self):
+
+        self.oas_path = ""
+        self.oas = {}
+        self.evaluations = {}
+
+
+    def setup_evaluation(self, oas_path):
 
         self.oas_path = oas_path
         self.oas = {}
         self.evaluations = {
             "api-name": oas_path.split("/")[-1].replace(".json", ""),
             "timestamp": str(datetime.now()),
+            "overall": {
+                "total": 0,
+                "pass": 0,
+                "fail": 0
+            },
             "evaluation-groups": {}
         }
 
@@ -500,6 +512,9 @@ class QualityEvaluator:
         self.evaluations["evaluation-groups"][group]["total"] += 1
         self.evaluations["evaluation-groups"][group][outcome] += 1
 
+        self.evaluations["overall"]["total"] += 1
+        self.evaluations["overall"][outcome] += 1
+
 
     def get_evaluation_group(self, evaluation_id):
 
@@ -545,5 +560,9 @@ class QualityEvaluator:
         # examples
         self.evaluate_response_examples()
         self.evaluate_parameter_examples()
+
+        # quality percentage
+        quality = round((self.evaluations["overall"]["pass"] / self.evaluations["overall"]["total"]) * 100)
+        self.evaluations["quality"] = f"{quality}%"
 
         print(json.dumps(self.evaluations, indent=4))
