@@ -1,4 +1,4 @@
-import json, openapi_spec_validator, re, requests
+import inspect, json, openapi_spec_validator, re, requests
 from config import get_config
 from datetime import datetime
 
@@ -15,7 +15,8 @@ class QualityEvaluator:
         self.oas = {}
         self.evaluations = {
             "api-name": oas_path.split("/")[-1].replace(".json", ""),
-            "timestamp": str(datetime.now())
+            "timestamp": str(datetime.now()),
+            "evaluation-groups": {}
         }
 
 
@@ -24,63 +25,63 @@ class QualityEvaluator:
         try:
             with open(self.oas_path, "r", encoding=config["file-encoding"]) as file:
                 self.oas = json.load(file)
-                self.evaluations["validate-json"] = {"result": "pass"}
+                self.add_evaluation("pass")
 
         except Exception as e:
-            self.evaluations["validate-json"] = {"result": "fail", "reason": type(e).__name__}
+            self.add_evaluation("fail", {"reason": type(e).__name__})
 
 
     def evaluate_validate_oas(self):
 
         try:
             openapi_spec_validator.validate(self.oas)
-            self.evaluations["validate-oas"] = {"result": "pass"}
+            self.add_evaluation("pass")
 
         except Exception as e:
-            self.evaluations["validate-oas"] = {"result": "fail", "reason": type(e).__name__}
+            self.add_evaluation("fail", {"reason": type(e).__name__})
 
 
     def evaluate_oas_version(self):
 
         if "openapi" in self.oas:
             version = self.oas["openapi"]
-            self.evaluations["oas-version"] = {"result": "pass", "version": f"openapi-{version}"}
+            self.add_evaluation("pass", {"version": f"openapi-{version}"})
 
         elif "swagger" in self.oas:
             version = self.oas["swagger"]
-            self.evaluations["oas-version"] = {"result": "fail", "reason": "outdated OAS version", "version": f"swagger-{version}"}
+            self.add_evaluation("fail", {"reason": "outdated OAS version", "version": f"swagger-{version}"})
 
         else:
-            self.evaluations["oas-version"] = {"result": "fail", "reason": "unknown OAS version", "version": "unknown"}
+            self.add_evaluation("fail", {"reason": "unknown OAS version", "version": "unknown"})
 
 
     def evaluate_api_title(self):
 
         if "info" not in self.oas:
-            self.evaluations["api-title"] = {"result": "fail", "reason": "missing info field"}
+            self.add_evaluation("fail", {"reason": "missing info field"})
             return
         
         if "title" not in self.oas["info"]:
-            self.evaluations["api-title"] = {"result": "fail", "reason": "missing title field"}
+            self.add_evaluation("fail", {"reason": "missing title field"})
             return
         
         title = self.oas["info"]["title"]
         
         if not self.has_content(title):
-            self.evaluations["api-title"] = {"result": "fail", "reason": "empty title field"}
+            self.add_evaluation("fail", {"reason": "empty title field"})
             return
         
-        self.evaluations["api-title"] = {"result": "pass", "title": title}
+        self.add_evaluation("pass", {"title": title})
 
 
     def evaluate_api_description(self):
 
         if "info" not in self.oas:
-            self.evaluations["api-description"] = {"result": "fail", "reason": "missing info field"}
+            self.add_evaluation("fail", {"reason": "missing info field"})
             return
         
         if "description" not in self.oas["info"]:
-            self.evaluations["api-description"] = {"result": "fail", "reason": "missing description field"}
+            self.add_evaluation("fail", {"reason": "missing description field"})
             return
         
         description = self.oas["info"]["description"]
@@ -88,97 +89,97 @@ class QualityEvaluator:
         violations = self.check_description(description, constraints)
 
         if len(violations) > 0:
-            self.evaluations["api-description"] = {"result": "fail", "reason": ", ".join(violations)}
+            self.add_evaluation("fail", {"reason": ", ".join(violations)})
         else:
-            self.evaluations["api-description"] = {"result": "pass"}
+            self.add_evaluation("pass")
 
 
     def evaluate_api_contact(self):
 
         if "info" not in self.oas:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing info field"}
+            self.add_evaluation("fail", {"reason": "missing info field"})
             return
 
         if "contact" not in self.oas["info"]:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing contact field"}
+            self.add_evaluation("fail", {"reason": "missing contact field"})
             return
         
         contact = self.oas["info"]["contact"]
         
         if contact == {}:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty contact field."}
+            self.add_evaluation("fail", {"reason": "empty contact field"})
             return
 
         if "email" not in contact and "url" not in contact:
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "missing email or url field"}
+            self.add_evaluation("fail", {"reason": "missing email or url field"})
             return
         
         if "email" in contact and not self.has_content(contact["email"]):
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty email field"}
+            self.add_evaluation("fail", {"reason": "empty email field"})
             return
         
         if "url" in contact and not self.has_content(contact["url"]):
-            self.evaluations["api-contact"] = {"result": "fail", "reason": "empty url field"}
+            self.add_evaluation("fail", {"reason": "empty url field"})
             return
-
-        self.evaluations["api-contact"] = {"result": "pass", "contact": contact}
+        
+        self.add_evaluation("pass", {"contact": contact})
 
 
     def evaluate_api_version(self):
 
         if "info" not in self.oas:
-            self.evaluations["api-version"] = {"result": "fail", "reason": "missing info field"}
+            self.add_evaluation("fail", {"reason": "missing info field"})
             return
         
         if "version" not in self.oas["info"]:
-            self.evaluations["api-version"] = {"result": "fail", "reason": "missing version field"}
+            self.add_evaluation("fail", {"reason": "missing version field"})
             return
         
         version = self.oas["info"]["version"]
 
         if not self.has_content(version):
-            self.evaluations["api-version"] = {"result": "fail", "reason": "empty version field"}
+            self.add_evaluation("fail", {"reason": "empty version field"})
             return
         
-        self.evaluations["api-version"] = {"result": "pass", "version": version}
+        self.add_evaluation("pass", {"version": version})
 
 
     def evaluate_api_license(self):
 
         if "info" not in self.oas:
-            self.evaluations["api-license"] = {"result": "fail", "reason": "missing info field"}
+            self.add_evaluation("fail", {"reason": "missing info field"})
             return
         
         if "license" not in self.oas["info"]:
-            self.evaluations["api-license"] = {"result": "fail", "reason": "missing license field"}
+            self.add_evaluation("fail", {"reason": "missing license field"})
             return
         
         license = self.oas["info"]["license"]
 
         if license == {}:
-            self.evaluations["api-license"] = {"result": "fail", "reason": "empty license field"}
+            self.add_evaluation("fail", {"reason": "empty license field"})
             return
         
-        self.evaluations["api-license"] = {"result": "pass", "license": license}
+        self.add_evaluation("pass", {"license": license})
 
 
     def evaluate_api_terms(self):
 
         if "info" not in self.oas:
-            self.evaluations["api-terms"] = {"result": "fail", "reason": "missing info field"}
+            self.add_evaluation("fail", {"reason": "missing info field"})
             return
         
         if "termsOfService" not in self.oas["info"]:
-            self.evaluations["api-terms"] = {"result": "fail", "reason": "missing termsOfService field"}
+            self.add_evaluation("fail", {"reason": "missing termsOfService field"})
             return
         
         terms = self.oas["info"]["termsOfService"]
 
         if terms == {}:
-            self.evaluations["api-terms"] = {"result": "fail", "reason": "empty termsOfService field"}
+            self.add_evaluation("fail", {"reason": "empty termsOfService field"})
             return
         
-        self.evaluations["api-terms"] = {"result": "pass", "terms": terms}
+        self.add_evaluation("pass", {"terms": terms})
 
 
     def evaluate_server_url(self):
@@ -186,10 +187,10 @@ class QualityEvaluator:
         server_urls = self.get_oas_servers()
 
         if len(server_urls) > 0:
-            self.evaluations["server-url"] = {"result": "pass", "urls": server_urls}
+            self.add_evaluation("pass", {"urls": server_urls})
 
         else:
-            self.evaluations["server-url"] = {"result": "fail", "reason": "missing server URL"}
+            self.add_evaluation("fail", {"reason": "missing server URL"})
 
 
     def evaluate_server_validity(self):
@@ -197,25 +198,25 @@ class QualityEvaluator:
         server_urls = self.get_oas_servers()
 
         if len(server_urls) == 0:
-            self.evaluations["server-valid"] = {"result": "fail", "reason": "missing server URL"}
+            self.add_evaluation("fail", {"reason": "missing server URL"})
             return
 
         # if at least one of the server URLs is valid, pass the evaluation
         for url in server_urls:
             try:
                 response = requests.get(url, timeout=10)
-                self.evaluations["server-valid"] = {"result": "pass", "code": response.status_code, "urls": server_urls}
+                self.add_evaluation("pass", {"code": response.status_code, "urls": server_urls})
                 break
             except:
-                self.evaluations["server-valid"] = {"result": "fail", "reason": "invalid server URL", "url": url}
+                self.add_evaluation("fail", {"reason": "invalid server URL", "url": url})
 
 
-    def evaluate_secure_https(self):
+    def evaluate_scheme(self):
 
         server_urls = self.get_oas_servers()
 
         if len(server_urls) == 0:
-            self.evaluations["secure-https"] = {"result": "fail", "reason": "missing server URL"}
+            self.add_evaluation("fail", {"reason": "missing server URL"})
             return
 
         nb_http = 0
@@ -229,15 +230,15 @@ class QualityEvaluator:
                     nb_http += 1
 
         if nb_http > 0 or nb_missing > 0:
-            self.evaluations["secure-https"] = {"result": "fail", "reason": "missing or outdated schemes", "nb-http": nb_http, "nb-missing": nb_missing, "urls": server_urls}
+            self.add_evaluation("fail", {"reason": "missing or outdated schemes", "nb-http": nb_http, "nb-missing": nb_missing, "urls": server_urls})
         else:
-            self.evaluations["secure-https"] = {"result": "pass", "urls": server_urls}
+            self.add_evaluation("pass", {"urls": server_urls})
 
 
     def evaluate_route_descriptions(self):
 
         if "paths" not in self.oas:
-            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "missing paths field"}
+            self.add_evaluation("fail", {"reason": "missing paths field"})
             return
         
         counters = {
@@ -272,15 +273,15 @@ class QualityEvaluator:
         threshold = constraints["invalid-threshold"]
 
         if percentage > threshold:
-            self.evaluations["route-descriptions"] = {"result": "fail", "reason": "too many missing or invalid descriptions", "percentage": percentage, "threshold": threshold, **counters}
+            self.add_evaluation("fail", {"reason": "too many missing or invalid route descriptions", "percentage": percentage, "threshold": threshold, **counters})
         else:
-            self.evaluations["route-descriptions"] = {"result": "pass", "percentage": percentage, "threshold": threshold, **counters}
+            self.add_evaluation("pass", {"percentage": percentage, "threshold": threshold, **counters})
 
 
     def evaluate_response_descriptions(self):
 
         if "paths" not in self.oas:
-            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "missing paths field"}
+            self.add_evaluation("fail", {"reason": "missing paths field"})
             return
         
         counters = {
@@ -325,15 +326,15 @@ class QualityEvaluator:
         threshold = constraints["invalid-threshold"]
 
         if percentage > threshold:
-            self.evaluations["response-descriptions"] = {"result": "fail", "reason": "too many missing or invalid descriptions", "percentage": percentage, "threshold": threshold, **counters}
+            self.add_evaluation("fail", {"reason": "too many missing or invalid response descriptions", "percentage": percentage, "threshold": threshold, **counters})
         else:
-            self.evaluations["response-descriptions"] = {"result": "pass", "percentage": percentage, "threshold": threshold, **counters}
+            self.add_evaluation("pass", {"percentage": percentage, "threshold": threshold, **counters})
 
 
     def evaluate_parameter_descriptions(self):
 
         if "paths" not in self.oas:
-            self.evaluations["parameter-descriptions"] = {"result": "fail", "reason": "missing paths field"}
+            self.add_evaluation("fail", {"reason": "missing paths field"})
             return
         
         counters = {
@@ -376,9 +377,66 @@ class QualityEvaluator:
         threshold = constraints["invalid-threshold"]
 
         if percentage > threshold:
-            self.evaluations["parameter-descriptions"] = {"result": "fail", "reason": "too many missing or invalid descriptions", "percentage": percentage, "threshold": threshold, **counters}
+            self.add_evaluation("fail", {"reason": "too many missing or invalid parameter descriptions", "percentage": percentage, "threshold": threshold, **counters})
         else:
-            self.evaluations["parameter-descriptions"] = {"result": "pass", "percentage": percentage, "threshold": threshold, **counters}
+            self.add_evaluation("pass", {"percentage": percentage, "threshold": threshold, **counters})
+
+
+    def evaluate_response_examples(self):
+
+        if "paths" not in self.oas:
+            self.add_evaluation("fail", {"reason": "missing paths field"})
+            return
+        
+        counters = {
+            "nb-routes": 0,
+            "nb-responses-in-routes": 0,
+            "nb-formats-in-responses": 0,
+            "nb-routes-without-responses": 0,
+            "nb-responses-without-content": 0,
+            "nb-examples-missing": 0,
+            "nb-examples-invalid": 0
+        }
+        constraints = config["examples"]["responses"]
+
+        for path in self.oas["paths"]:
+            for method in self.oas["paths"][path]:
+                route_data = self.oas["paths"][path][method]
+                counters["nb-routes"] += 1
+
+                if "responses" not in route_data:
+                    counters["nb-routes-without-responses"] += 1
+                    continue
+
+                for response in route_data["responses"]:
+                    response_data = route_data["responses"][response]
+                    counters["nb-responses-in-routes"] += 1
+
+                    if "content" not in response_data or response_data["content"] == {}:
+                        counters["nb-responses-without-content"] += 1
+                        continue
+
+                    for format in response_data["content"]:
+                        format_data = response_data["content"][format]
+                        counters["nb-formats-in-responses"] += 1
+
+                        if "examples" not in format_data and "example" not in format_data:
+                            counters["nb-examples-missing"] += 1
+                            continue
+
+                        if "examples" in format_data and format_data["examples"] == {}:
+                            counters["nb-examples-invalid"] += 1
+
+                        if "example" in format_data and format_data["example"] == {}:
+                            counters["nb-examples-invalid"] += 1
+
+        percentage = (counters["nb-examples-missing"] + counters["nb-examples-invalid"]) / counters["nb-formats-in-responses"]
+        threshold = constraints["invalid-threshold"]
+
+        if percentage > threshold:
+            self.add_evaluation("fail", {"reason": "too many missing or invalid response examples", "percentage": percentage, "threshold": threshold, **counters})
+        else:
+            self.add_evaluation("pass", {"percentage": percentage, "threshold": threshold, **counters})
 
 
     def get_oas_servers(self):
@@ -425,15 +483,52 @@ class QualityEvaluator:
     def has_content(self, str):
 
         return bool(str and str.strip())
+    
+
+    def add_evaluation(self, outcome, data={}):
+
+        # get caller name
+        evaluation_id = inspect.currentframe().f_back.f_code.co_name.replace("_", "-")
+        
+        self.evaluations[evaluation_id] = {"outcome": outcome, **data}
+
+        group = self.get_evaluation_group(evaluation_id)
+
+        if group not in self.evaluations["evaluation-groups"]:
+            self.evaluations["evaluation-groups"][group] = {
+                "total": 0,
+                "pass": 0,
+                "fail": 0
+            }
+
+        self.evaluations["evaluation-groups"][group]["total"] += 1
+        self.evaluations["evaluation-groups"][group][outcome] += 1
+
+
+    def get_evaluation_group(self, evaluation_id):
+
+        groups = config["groups"]
+
+        for group_name, evaluation_ids in groups.items():
+            if evaluation_id in evaluation_ids:
+                return group_name
+            
+        return None
         
 
     def execute(self):
 
+        # TODO: replace OAS refs with their data to avoid false positives in descriptions and examples
+        # self.parse_refs()
+
+        # formats
         self.evaluate_validate_json()
         self.evaluate_validate_oas()
 
+        # OAS version
         self.evaluate_oas_version()
 
+        # metadata
         self.evaluate_api_title()
         self.evaluate_api_description()
         self.evaluate_api_contact()
@@ -441,13 +536,18 @@ class QualityEvaluator:
         self.evaluate_api_license()
         self.evaluate_api_terms()
 
+        # server
         self.evaluate_server_url()
         self.evaluate_server_validity()
-        self.evaluate_secure_https()
+        self.evaluate_scheme()
 
+        # descriptions
         self.evaluate_route_descriptions()
         self.evaluate_response_descriptions()
         self.evaluate_parameter_descriptions()
+
+        # examples
+        self.evaluate_response_examples()
 
         # TODO
         # self.evaluate_response_examples()

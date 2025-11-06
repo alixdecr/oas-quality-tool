@@ -27,5 +27,49 @@
             "max-words": 100,
             "invalid-threshold": 0.2
         }
+    },
+
+    "examples": {
+
+        "responses": {
+            "invalid-threshold": 0.2
+        }
+    },
+
+    "groups": {
+
+        "format": [
+            "evaluate-validate-json",
+            "evaluate-validate-oas"
+        ],
+
+        "oas-version": [
+            "evaluate-oas-version"
+        ],
+
+        "metadata": [
+            "evaluate-api-title",
+            "evaluate-api-description",
+            "evaluate-api-contact",
+            "evaluate-api-version",
+            "evaluate-api-license",
+            "evaluate-api-terms"
+        ],
+
+        "server": [
+            "evaluate-server-url",
+            "evaluate-server-validity",
+            "evaluate-scheme"
+        ],
+
+        "descriptions": [
+            "evaluate-route-descriptions",
+            "evaluate-response-descriptions",
+            "evaluate-parameter-descriptions"
+        ],
+
+        "examples": [
+            "evaluate-response-examples"
+        ]
     }
 }
