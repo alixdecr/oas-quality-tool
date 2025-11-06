@@ -399,7 +399,7 @@ class QualityEvaluator:
                 route_data = self.oas["paths"][path][method]
 
                 if "responses" not in route_data:
-                    counters["nb-media-total"] += 1
+                    counters["nb-media-total"] += 2 # we suppose 2 because 1 for a valid response and 1 for an invalid response (e.g., 200 and 404)
                     continue
 
                 for response in route_data["responses"]:
@@ -417,10 +417,10 @@ class QualityEvaluator:
                             counters["nb-media-with-example"] += 1
 
         percentage = counters["nb-media-with-example"] / counters["nb-media-total"]
-        threshold = constraints["invalid-threshold"]
+        threshold = constraints["threshold"]
 
-        if percentage > threshold:
-            self.add_evaluation("fail", {"reason": "too many missing or invalid response examples", "percentage": percentage, "threshold": threshold, **counters})
+        if percentage < threshold:
+            self.add_evaluation("fail", {"reason": "not enough response examples", "percentage": percentage, "threshold": threshold, **counters})
         else:
             self.add_evaluation("pass", {"percentage": percentage, "threshold": threshold, **counters})
 
