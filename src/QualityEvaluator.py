@@ -389,48 +389,34 @@ class QualityEvaluator:
             return
         
         counters = {
-            "nb-routes": 0,
-            "nb-responses-in-routes": 0,
-            "nb-formats-in-responses": 0,
-            "nb-routes-without-responses": 0,
-            "nb-responses-without-content": 0,
-            "nb-examples-missing": 0,
-            "nb-examples-invalid": 0
+            "nb-media-total": 0,
+            "nb-media-with-example": 0
         }
         constraints = config["examples"]["responses"]
 
         for path in self.oas["paths"]:
             for method in self.oas["paths"][path]:
                 route_data = self.oas["paths"][path][method]
-                counters["nb-routes"] += 1
 
                 if "responses" not in route_data:
-                    counters["nb-routes-without-responses"] += 1
+                    counters["nb-media-total"] += 1
                     continue
 
                 for response in route_data["responses"]:
                     response_data = route_data["responses"][response]
-                    counters["nb-responses-in-routes"] += 1
 
                     if "content" not in response_data or response_data["content"] == {}:
-                        counters["nb-responses-without-content"] += 1
+                        counters["nb-media-total"] += 1
                         continue
 
-                    for format in response_data["content"]:
-                        format_data = response_data["content"][format]
-                        counters["nb-formats-in-responses"] += 1
+                    for media in response_data["content"]:
+                        media_data = response_data["content"][media]
+                        counters["nb-media-total"] += 1
 
-                        if "examples" not in format_data and "example" not in format_data:
-                            counters["nb-examples-missing"] += 1
-                            continue
+                        if ("examples" in media_data and media_data["examples"] != {}) or ("example" in media_data and media_data["example"] != {}):
+                            counters["nb-media-with-example"] += 1
 
-                        if "examples" in format_data and format_data["examples"] == {}:
-                            counters["nb-examples-invalid"] += 1
-
-                        if "example" in format_data and format_data["example"] == {}:
-                            counters["nb-examples-invalid"] += 1
-
-        percentage = (counters["nb-examples-missing"] + counters["nb-examples-invalid"]) / counters["nb-formats-in-responses"]
+        percentage = counters["nb-media-with-example"] / counters["nb-media-total"]
         threshold = constraints["invalid-threshold"]
 
         if percentage > threshold:
