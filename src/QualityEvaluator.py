@@ -1,6 +1,7 @@
 import inspect, json, openapi_spec_validator, re, requests
 from config import get_config
 from datetime import datetime
+from jsonref import replace_refs
 
 
 config = get_config()
@@ -16,12 +17,27 @@ class QualityEvaluator:
         self.evaluations = {}
 
 
-    def setup_evaluation(self, oas_path):
+    def setup_evaluation_local(self, oas_path):
 
         self.oas_path = oas_path
         self.oas = {}
         self.evaluations = {
             "api-name": oas_path.split("/")[-1].replace(".json", ""),
+            "timestamp": str(datetime.now()),
+            "overall": {
+                "total": 0,
+                "pass": 0,
+                "fail": 0
+            },
+            "evaluation-groups": {}
+        }
+
+
+    def setup_evaluation_online(self, api_name, oas):
+
+        self.oas = oas
+        self.evaluations = {
+            "api-name": api_name,
             "timestamp": str(datetime.now()),
             "overall": {
                 "total": 0,
@@ -258,18 +274,23 @@ class QualityEvaluator:
 
         for path in self.oas["paths"]:
             for method in self.oas["paths"][path]:
-                route_data = self.oas["paths"][path][method]
-                counters["nb-routes-total"] += 1
+                if method in ("get", "post", "put", "patch", "delete", "head", "connect", "options", "trace"):
+                    route_data = self.oas["paths"][path][method]
+                    counters["nb-routes-total"] += 1
 
-                violations = self.check_description(route_data, constraints)
+                    violations = self.check_description(route_data, constraints)
 
-                for id in violations:
-                        if id not in counters["invalid-details"]:
-                            counters["invalid-details"][id] = 0
-                        counters["invalid-details"][id] += 1
+                    for id in violations:
+                            if id not in counters["invalid-details"]:
+                                counters["invalid-details"][id] = 0
+                            counters["invalid-details"][id] += 1
 
-                if len(violations) == 0:
-                    counters["nb-routes-with-valid-desc"] += 1
+                    if len(violations) == 0:
+                        counters["nb-routes-with-valid-desc"] += 1
+
+        if counters["nb-routes-total"] == 0:
+            self.add_evaluation("pass")
+            return
 
         percentage = counters["nb-routes-with-valid-desc"] / counters["nb-routes-total"]
         min_percentage = constraints["min-percentage"]
@@ -295,25 +316,30 @@ class QualityEvaluator:
         
         for path in self.oas["paths"]:
             for method in self.oas["paths"][path]:
-                route_data = self.oas["paths"][path][method]
+                if method in ("get", "post", "put", "patch", "delete", "head", "connect", "options", "trace"):
+                    route_data = self.oas["paths"][path][method]
 
-                if "responses" not in route_data:
-                    counters["nb-responses-total"] += 2 # we suppose 2 because 1 for a valid response and 1 for an invalid response (e.g., 200 and 404)
-                    continue
+                    if "responses" not in route_data:
+                        counters["nb-responses-total"] += 2 # we suppose 2 because 1 for a valid response and 1 for an invalid response (e.g., 200 and 404)
+                        continue
 
-                for response in route_data["responses"]:
-                    response_data = route_data["responses"][response]
-                    counters["nb-responses-total"] += 1
+                    for response in route_data["responses"]:
+                        response_data = route_data["responses"][response]
+                        counters["nb-responses-total"] += 1
 
-                    violations = self.check_description(response_data, constraints)
+                        violations = self.check_description(response_data, constraints)
 
-                    for id in violations:
-                        if id not in counters["invalid-details"]:
-                            counters["invalid-details"][id] = 0
-                        counters["invalid-details"][id] += 1
+                        for id in violations:
+                            if id not in counters["invalid-details"]:
+                                counters["invalid-details"][id] = 0
+                            counters["invalid-details"][id] += 1
 
-                    if len(violations) == 0:
-                        counters["nb-responses-with-valid-desc"] += 1
+                        if len(violations) == 0:
+                            counters["nb-responses-with-valid-desc"] += 1
+
+        if counters["nb-responses-total"] == 0:
+            self.add_evaluation("pass")
+            return
 
         percentage = counters["nb-responses-with-valid-desc"] / counters["nb-responses-total"]
         min_percentage = constraints["min-percentage"]
@@ -339,24 +365,28 @@ class QualityEvaluator:
 
         for path in self.oas["paths"]:
             for method in self.oas["paths"][path]:
-                route_data = self.oas["paths"][path][method]
+                if method in ("get", "post", "put", "patch", "delete", "head", "connect", "options", "trace"):
+                    route_data = self.oas["paths"][path][method]
 
-                if not "parameters" in route_data:
-                    continue
-                
-                for parameter_data in route_data["parameters"]:
-                    counters["nb-parameters-total"] += 1
+                    if not "parameters" in route_data:
+                        continue
+                    
+                    for parameter_data in route_data["parameters"]:
+                        counters["nb-parameters-total"] += 1
 
-                    violations = self.check_description(parameter_data, constraints)
+                        violations = self.check_description(parameter_data, constraints)
 
-                    for id in violations:
-                        if id not in counters["invalid-details"]:
-                            counters["invalid-details"][id] = 0
-                        counters["invalid-details"][id] += 1
+                        for id in violations:
+                            if id not in counters["invalid-details"]:
+                                counters["invalid-details"][id] = 0
+                            counters["invalid-details"][id] += 1
 
-                    if len(violations) == 0:
-                        counters["nb-parameters-with-valid-desc"] += 1
+                        if len(violations) == 0:
+                            counters["nb-parameters-with-valid-desc"] += 1
 
+        if counters["nb-parameters-total"] == 0:
+            self.add_evaluation("pass")
+            return
 
         percentage = counters["nb-parameters-with-valid-desc"] / counters["nb-parameters-total"]
         min_percentage = constraints["min-percentage"]
@@ -381,25 +411,30 @@ class QualityEvaluator:
 
         for path in self.oas["paths"]:
             for method in self.oas["paths"][path]:
-                route_data = self.oas["paths"][path][method]
+                if method in ("get", "post", "put", "patch", "delete", "head", "connect", "options", "trace"):
+                    route_data = self.oas["paths"][path][method]
 
-                if "responses" not in route_data:
-                    counters["nb-media-total"] += 2 # we suppose 2 because 1 for a valid response and 1 for an invalid response (e.g., 200 and 404)
-                    continue
-
-                for response in route_data["responses"]:
-                    response_data = route_data["responses"][response]
-
-                    if "content" not in response_data or response_data["content"] == {}:
-                        counters["nb-media-total"] += 1
+                    if "responses" not in route_data:
+                        counters["nb-media-total"] += 2 # we suppose 2 because 1 for a valid response and 1 for an invalid response (e.g., 200 and 404)
                         continue
 
-                    for media in response_data["content"]:
-                        media_data = response_data["content"][media]
-                        counters["nb-media-total"] += 1
+                    for response in route_data["responses"]:
+                        response_data = route_data["responses"][response]
 
-                        if media_data.get("examples") or media_data.get("example"):
-                            counters["nb-media-with-valid-example"] += 1
+                        if "content" not in response_data or response_data["content"] == {}:
+                            counters["nb-media-total"] += 1
+                            continue
+
+                        for media in response_data["content"]:
+                            media_data = response_data["content"][media]
+                            counters["nb-media-total"] += 1
+
+                            if media_data.get("examples") or media_data.get("example"):
+                                counters["nb-media-with-valid-example"] += 1
+
+        if counters["nb-media-total"] == 0:
+            self.add_evaluation("pass")
+            return
 
         percentage = counters["nb-media-with-valid-example"] / counters["nb-media-total"]
         min_percentage = constraints["min-percentage"]
@@ -424,16 +459,21 @@ class QualityEvaluator:
 
         for path in self.oas["paths"]:
             for method in self.oas["paths"][path]:
-                route_data = self.oas["paths"][path][method]
+                if method in ("get", "post", "put", "patch", "delete", "head", "connect", "options", "trace"):
+                    route_data = self.oas["paths"][path][method]
 
-                if not "parameters" in route_data:
-                    continue
-                
-                for parameter_data in route_data["parameters"]:
-                    counters["nb-parameters-total"] += 1
+                    if not "parameters" in route_data:
+                        continue
+                    
+                    for parameter_data in route_data["parameters"]:
+                        counters["nb-parameters-total"] += 1
 
-                    if parameter_data.get("examples") or parameter_data.get("example"):
-                        counters["nb-parameters-with-valid-example"] += 1
+                        if parameter_data.get("examples") or parameter_data.get("example"):
+                            counters["nb-parameters-with-valid-example"] += 1
+
+        if counters["nb-parameters-total"] == 0:
+            self.add_evaluation("pass")
+            return
 
         percentage = counters["nb-parameters-with-valid-example"] / counters["nb-parameters-total"]
         min_percentage = constraints["min-percentage"]
@@ -529,11 +569,14 @@ class QualityEvaluator:
 
     def execute(self):
 
-        # TODO: replace OAS refs with their data to avoid false positives in descriptions and examples
-        # self.parse_refs()
+        # try to resolve potential refs
+        try:
+            self.oas = replace_refs(self.oas)
+        except:
+            pass
 
         # formats
-        self.evaluate_validate_json()
+        #self.evaluate_validate_json()
         self.evaluate_validate_oas()
 
         # OAS version
@@ -565,4 +608,4 @@ class QualityEvaluator:
         quality = round((self.evaluations["overall"]["pass"] / self.evaluations["overall"]["total"]) * 100)
         self.evaluations["quality"] = f"{quality}%"
 
-        print(json.dumps(self.evaluations, indent=4))
+        #print(json.dumps(self.evaluations, indent=4))

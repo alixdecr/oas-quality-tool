@@ -1,3 +1,2 @@
-language_tool_python
+jsonref
 openapi-spec-validator
-textstat
