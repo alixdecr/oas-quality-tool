@@ -242,9 +242,8 @@ class QualityEvaluator:
             return
         
         counters = {
-            "nb-routes": 0,
-            "nb-desc-missing": 0,
-            "nb-desc-invalid" : 0,
+            "nb-routes-total": 0,
+            "nb-routes-with-valid-desc": 0,
             "invalid-details": {}
         }
         constraints = config["descriptions"]["routes"]
@@ -252,30 +251,25 @@ class QualityEvaluator:
         for path in self.oas["paths"]:
             for method in self.oas["paths"][path]:
                 route_data = self.oas["paths"][path][method]
-                counters["nb-routes"] += 1
+                counters["nb-routes-total"] += 1
 
-                if "description" not in route_data:
-                    counters["nb-desc-missing"] += 1
-                    continue
+                violations = self.check_description(route_data, constraints)
 
-                description = route_data["description"]
-                violations = self.check_description(description, constraints)
-
-                if len(violations) > 0:
-                    counters["nb-desc-invalid"] += 1
-
-                    for id in violations:
+                for id in violations:
                         if id not in counters["invalid-details"]:
                             counters["invalid-details"][id] = 0
                         counters["invalid-details"][id] += 1
 
-        percentage = (counters["nb-desc-missing"] + counters["nb-desc-invalid"]) / counters["nb-routes"]
-        threshold = constraints["invalid-threshold"]
+                if len(violations) == 0:
+                    counters["nb-routes-with-valid-desc"] += 1
 
-        if percentage > threshold:
-            self.add_evaluation("fail", {"reason": "too many missing or invalid route descriptions", "percentage": percentage, "threshold": threshold, **counters})
+        percentage = counters["nb-routes-with-valid-desc"] / counters["nb-routes-total"]
+        min_percentage = constraints["min-percentage"]
+
+        if percentage < min_percentage:
+            self.add_evaluation("fail", {"reason": "not enough valid route descriptions", "percentage": percentage, "min-percentage": min_percentage, **counters})
         else:
-            self.add_evaluation("pass", {"percentage": percentage, "threshold": threshold, **counters})
+            self.add_evaluation("pass", {"percentage": percentage, "min-percentage": min_percentage, **counters})
 
 
     def evaluate_response_descriptions(self):
@@ -285,11 +279,8 @@ class QualityEvaluator:
             return
         
         counters = {
-            "nb-routes": 0,
-            "nb-routes-without-responses": 0,
-            "nb-responses": 0,
-            "nb-desc-missing": 0,
-            "nb-desc-invalid": 0,
+            "nb-responses-total": 0,
+            "nb-responses-with-valid-desc": 0,
             "invalid-details": {}
         }
         constraints = config["descriptions"]["responses"]
@@ -297,38 +288,32 @@ class QualityEvaluator:
         for path in self.oas["paths"]:
             for method in self.oas["paths"][path]:
                 route_data = self.oas["paths"][path][method]
-                counters["nb-routes"] += 1
 
                 if "responses" not in route_data:
-                    counters["nb-routes-without-responses"] += 1
+                    counters["nb-responses-total"] += 2 # we suppose 2 because 1 for a valid response and 1 for an invalid response (e.g., 200 and 404)
                     continue
 
                 for response in route_data["responses"]:
                     response_data = route_data["responses"][response]
-                    counters["nb-responses"] += 1
+                    counters["nb-responses-total"] += 1
 
-                    if "description" not in response_data:
-                        counters["nb-desc-missing"] += 1
-                        continue
+                    violations = self.check_description(response_data, constraints)
 
-                    description = response_data["description"]
-                    violations = self.check_description(description, constraints)
+                    for id in violations:
+                        if id not in counters["invalid-details"]:
+                            counters["invalid-details"][id] = 0
+                        counters["invalid-details"][id] += 1
 
-                    if len(violations) > 0:
-                        counters["nb-desc-invalid"] += 1
+                    if len(violations) == 0:
+                        counters["nb-responses-with-valid-desc"] += 1
 
-                        for id in violations:
-                            if id not in counters["invalid-details"]:
-                                counters["invalid-details"][id] = 0
-                            counters["invalid-details"][id] += 1
+        percentage = counters["nb-responses-with-valid-desc"] / counters["nb-responses-total"]
+        min_percentage = constraints["min-percentage"]
 
-        percentage = (counters["nb-desc-missing"] + counters["nb-desc-invalid"]) / counters["nb-responses"]
-        threshold = constraints["invalid-threshold"]
-
-        if percentage > threshold:
-            self.add_evaluation("fail", {"reason": "too many missing or invalid response descriptions", "percentage": percentage, "threshold": threshold, **counters})
+        if percentage < min_percentage:
+            self.add_evaluation("fail", {"reason": "not enough valid response descriptions", "percentage": percentage, "min-percentage": min_percentage, **counters})
         else:
-            self.add_evaluation("pass", {"percentage": percentage, "threshold": threshold, **counters})
+            self.add_evaluation("pass", {"percentage": percentage, "min-percentage": min_percentage, **counters})
 
 
     def evaluate_parameter_descriptions(self):
@@ -338,10 +323,8 @@ class QualityEvaluator:
             return
         
         counters = {
-            "nb-routes": 0,
-            "nb-parameters": 0,
-            "nb-desc-missing": 0,
-            "nb-desc-invalid": 0,
+            "nb-parameters-total": 0,
+            "nb-parameters-with-valid-desc": 0,
             "invalid-details": {}
         }
         constraints = config["descriptions"]["parameters"]
@@ -349,37 +332,31 @@ class QualityEvaluator:
         for path in self.oas["paths"]:
             for method in self.oas["paths"][path]:
                 route_data = self.oas["paths"][path][method]
-                counters["nb-routes"] += 1
 
                 if not "parameters" in route_data:
                     continue
                 
-                for parameter in route_data["parameters"]:
-                    counters["nb-parameters"] += 1
+                for parameter_data in route_data["parameters"]:
+                    counters["nb-parameters-total"] += 1
 
-                    if "description" not in parameter:
-                        counters["nb-desc-missing"] += 1
-                        continue
+                    violations = self.check_description(parameter_data, constraints)
 
-                    description = parameter["description"]
-                    violations = self.check_description(description, constraints)
+                    for id in violations:
+                        if id not in counters["invalid-details"]:
+                            counters["invalid-details"][id] = 0
+                        counters["invalid-details"][id] += 1
 
-                    if len(violations) > 0:
-                        counters["nb-desc-invalid"] += 1
-
-                        for id in violations:
-                            if id not in counters["invalid-details"]:
-                                counters["invalid-details"][id] = 0
-                            counters["invalid-details"][id] += 1
+                    if len(violations) == 0:
+                        counters["nb-parameters-with-valid-desc"] += 1
 
 
-        percentage = (counters["nb-desc-missing"] + counters["nb-desc-invalid"]) / counters["nb-parameters"]
-        threshold = constraints["invalid-threshold"]
+        percentage = counters["nb-parameters-with-valid-desc"] / counters["nb-parameters-total"]
+        min_percentage = constraints["min-percentage"]
 
-        if percentage > threshold:
-            self.add_evaluation("fail", {"reason": "too many missing or invalid parameter descriptions", "percentage": percentage, "threshold": threshold, **counters})
+        if percentage < min_percentage:
+            self.add_evaluation("fail", {"reason": "not enough valid parameter descriptions", "percentage": percentage, "min-percentage": min_percentage, **counters})
         else:
-            self.add_evaluation("pass", {"percentage": percentage, "threshold": threshold, **counters})
+            self.add_evaluation("pass", {"percentage": percentage, "min-percentage": min_percentage, **counters})
 
 
     def evaluate_response_examples(self):
@@ -390,7 +367,7 @@ class QualityEvaluator:
         
         counters = {
             "nb-media-total": 0,
-            "nb-media-with-example": 0
+            "nb-media-with-valid-example": 0
         }
         constraints = config["examples"]["responses"]
 
@@ -414,15 +391,15 @@ class QualityEvaluator:
                         counters["nb-media-total"] += 1
 
                         if ("examples" in media_data and media_data["examples"] != {}) or ("example" in media_data and media_data["example"] != {}):
-                            counters["nb-media-with-example"] += 1
+                            counters["nb-media-with-valid-example"] += 1
 
-        percentage = counters["nb-media-with-example"] / counters["nb-media-total"]
-        threshold = constraints["threshold"]
+        percentage = counters["nb-media-with-valid-example"] / counters["nb-media-total"]
+        min_percentage = constraints["min-percentage"]
 
-        if percentage < threshold:
-            self.add_evaluation("fail", {"reason": "not enough response examples", "percentage": percentage, "threshold": threshold, **counters})
+        if percentage < min_percentage:
+            self.add_evaluation("fail", {"reason": "not enough valid response examples", "percentage": percentage, "min-percentage": min_percentage, **counters})
         else:
-            self.add_evaluation("pass", {"percentage": percentage, "threshold": threshold, **counters})
+            self.add_evaluation("pass", {"percentage": percentage, "min-percentage": min_percentage, **counters})
 
 
     def get_oas_servers(self):
@@ -445,9 +422,12 @@ class QualityEvaluator:
         return server_urls
     
 
-    def check_description(self, description, constraints):
+    def check_description(self, description_location, constraints):
 
-        description = re.sub(r"\s+", " ", description).strip().lower()
+        if "description" not in description_location:
+            return ["missing description field"]
+
+        description = re.sub(r"\s+", " ", description_location["description"]).strip().lower()
         nb_words = len(description.split())
         violations = []
 
