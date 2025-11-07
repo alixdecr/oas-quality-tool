@@ -576,7 +576,7 @@ class QualityEvaluator:
             pass
 
         # formats
-        #self.evaluate_validate_json()
+        self.evaluate_validate_json()
         self.evaluate_validate_oas()
 
         # OAS version
