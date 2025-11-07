@@ -9,6 +9,7 @@ config = get_config()
 def main():
 
     in_path = config["in-path"]
+
     # create output folder if it does not exist yet
     out_path = config["out-path"]
     out_path = os.path.dirname(f"{out_path}/")
