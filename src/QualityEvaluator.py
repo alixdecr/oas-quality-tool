@@ -51,7 +51,7 @@ class QualityEvaluator:
     def evaluate_validate_json(self):
 
         try:
-            with open(self.oas_path, "r", encoding=config["file-encoding"]) as file:
+            with open(self.oas_path, "r") as file:
                 self.oas = json.load(file)
                 self.add_evaluation("pass")
 

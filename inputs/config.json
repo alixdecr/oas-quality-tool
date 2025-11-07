@@ -1,5 +1,6 @@
 {
-    "file-encoding": "utf-8-sig",
+    "in-path": "inputs/oas",
+    "out-path":"outputs",
 
     "descriptions": {
 

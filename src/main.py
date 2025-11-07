@@ -1,12 +1,17 @@
 import json, os
+from config import get_config
 from QualityEvaluator import QualityEvaluator
+
+
+config = get_config()
 
 
 def main():
 
-    in_path = "inputs/oas"
+    in_path = config["in-path"]
     # create output folder if it does not exist yet
-    out_path = os.path.dirname("outputs/")
+    out_path = config["out-path"]
+    out_path = os.path.dirname(f"{out_path}/")
     if out_path:
         os.makedirs(out_path, exist_ok=True)
 
@@ -29,11 +34,11 @@ def main():
 
         quality = evaluator.evaluations["quality"]
 
-        print(f"({nb_current}/{nb_total}) {quality} {api_name}")
-
         out_name = f"evaluation-{api_name}.json"
         with open(f"outputs/{out_name}", "w") as file:
             json.dump(evaluator.evaluations, file, indent=4)
+
+        print(f"({nb_current}/{nb_total}) {quality} {api_name}")
 
 
 if __name__ == "__main__":
