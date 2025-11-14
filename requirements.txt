@@ -1,2 +1,4 @@
 jsonref
 openapi-spec-validator
+requests
+jsonschema
