@@ -4,23 +4,27 @@ from requests.exceptions import RequestException
 from urllib.parse import urlparse
 from config import get_config
 from datetime import datetime
-from typing import Optional, Any, Dict, Union, Literal, List
+from typing import Optional, Any, Dict, Union, Literal, List, Pattern
 from pathlib import Path
 from jsonref import replace_refs
 
-
-config = get_config()
-
-
 class QualityEvaluator:
 
+    
+    SEMVER_PATTERN = re.compile(r"^\d+\.\d+(\.\d+)?.*$")
+    EMAIL_PATTERN = re.compile(r"^[\w\.-]+@[\w\.-]+\.\w+$")
+    WHITESPACE_PATTERN: Pattern = re.compile(r"\s+")
+    VALID_METHODS = {
+        "get", "post", "put", "patch", "delete", 
+        "head", "connect", "options", "trace"
+    }
 
-    def __init__(self):
-
-        self.oas_path = ""
-        self.oas = {}
-        self.evaluations = {}
-        pass
+    def __init__(self, configuration: Optional[Dict[str, Any]] = None):
+        self.config = configuration if configuration else get_config()
+        self.oas_path: Optional[str] = None
+        self.oas: Dict[str, Any] = {}
+        self.evaluations: Dict[str, Any] = {}
+        self.mode: Literal["local", "online"] = "local"
 
 
     def setup_evaluation_local(self, file_path: Union[str, Path]) -> None:
@@ -35,18 +39,14 @@ class QualityEvaluator:
             file_path (Union[str, Path]): The absolute or relative path to the 
                                           OAS specification file (JSON/YAML).
         """
+
+        self.mode = "local"
+        
         # Convert input to a Path object for robust cross-platform handling (Windows/Linux)
         path_obj = Path(file_path)
-        
-        # Store the absolute path to avoid relative path issues later
         self.oas_path = str(path_obj.resolve())
-        
-        # Initialize as empty; actual parsing occurs in 'evaluate_validate_json'
         self.oas = {} 
-        
-        # Extract the filename without the extension (e.g., "my-api.v1.json" -> "my-api.v1")
         api_name = path_obj.stem
-        
         self._initialize_evaluations(api_name)
 
     def setup_evaluation_online(self, api_name: str, oas_content: Dict[str, Any]) -> None:
@@ -61,6 +61,8 @@ class QualityEvaluator:
             oas_content (Dict[str, Any]): The already parsed OpenAPI Specification 
                                           content as a dictionary.
         """
+        self.mode = "online"
+
         self.oas = oas_content
         self._initialize_evaluations(api_name)
 
@@ -106,7 +108,13 @@ class QualityEvaluator:
            line number, column, and error message provided by the JSON parser.
 
         """
-        # 1. Pre-check: Ensure a path is actually set
+        # 1. Mode Check: Skip this check if we are not analyzing a local file
+        if self.mode == "online":
+            # We assume the JSON is valid because it's already loaded in memory
+            self.add_evaluation("pass", {"note": "skipped in online mode"})
+            return
+        
+        # 2. Pre-check: Ensure a path is actually set
         if not self.oas_path or not isinstance(self.oas_path, str):
             self.add_evaluation("fail", {
                 "reason": "no file path provided for local evaluation"
@@ -114,12 +122,12 @@ class QualityEvaluator:
             return
 
         try:
-            # 2. File Operation
+            # 3. File Operation
             # We enforce UTF-8 to ensure cross-platform compatibility (Linux/Mac/Windows).
             with open(self.oas_path, "r", encoding="utf-8") as file:
                 self.oas = json.load(file)
                 
-            # 3. Success
+            # 4. Success
             self.add_evaluation("pass")
 
         except FileNotFoundError:
@@ -135,7 +143,7 @@ class QualityEvaluator:
             })
 
         except json.JSONDecodeError as e:
-            # 4. Detailed Syntax Error Reporting
+            # 5. Detailed Syntax Error Reporting
             # This is critical for developer experience. It tells them exactly where to fix.
             self.add_evaluation("fail", {
                 "reason": "invalid JSON syntax",
@@ -146,7 +154,7 @@ class QualityEvaluator:
             })
 
         except Exception as e:
-            # 5. Fallback for Unexpected IO Errors
+            # 6. Fallback for Unexpected IO Errors
             self.add_evaluation("fail", {
                 "reason": "unexpected error during file reading",
                 "exception-type": type(e).__name__,
@@ -252,8 +260,7 @@ class QualityEvaluator:
 
             # SemVer Validation (Major.Minor.Patch)
             # Regex: Start, digits, dot, digits, dot, digits, End.
-            semver_pattern = r"^\d+\.\d+\.\d+$"
-            if not re.match(semver_pattern, version_value.strip()):
+            if not self.SEMVER_PATTERN.match(version_value.strip()):
                 self.add_evaluation("fail", {
                     "reason": "OAS version does not follow Semantic Versioning (Major.Minor.Patch)",
                     "value": version_value,
@@ -306,8 +313,12 @@ class QualityEvaluator:
             Defaults: min=4, max=80.
         """
         # 1. Structural Validation
-        info_object = self.oas.get("info")
-        if not info_object or not isinstance(info_object, dict):
+        # We use the helper to cleanly get the object or None
+        info_object = self._get_info_object()
+        
+        # We explicitly handle the failure case here so 'inspect' attributes
+        # the failure to 'evaluate-api-title'
+        if info_object is None:
             self.add_evaluation("fail", {"reason": "missing or invalid info object"})
             return
 
@@ -331,12 +342,12 @@ class QualityEvaluator:
             self.add_evaluation("fail", {"reason": "empty title field"})
             return
 
-        title_clean = raw_title.strip()
+        title_clean = self.WHITESPACE_PATTERN.sub(" ", str(raw_title)).strip()
 
         # 5. Quality Checks (Governance)
         # Retrieve constraints or use sensible defaults
         # Note: Assuming we add a 'titles' section to config, otherwise defaults apply.
-        title_config = config.get("titles", {})
+        title_config = self.config.get("titles", {})
         min_length = title_config.get("min-length", 4)
         max_length = title_config.get("max-length", 100)
         
@@ -359,7 +370,7 @@ class QualityEvaluator:
 
         # Check 5b: Templated/Default Values
         # Common default values generated by tools that should be changed.
-        forbidden_titles = ["Swagger Petstore", "OpenAPI Definition", "Untitled API"]
+        forbidden_titles = ["OpenAPI Definition", "Untitled API"]
         if any(default.lower() in title_clean.lower() for default in forbidden_titles):
              self.add_evaluation("fail", {
                 "reason": "title appears to be a default template value", 
@@ -394,16 +405,17 @@ class QualityEvaluator:
             Requires 'config["descriptions"]["api"]'. If missing, defaults to 
             empty constraints (only checking for existence/non-emptiness).
         """
-        # 1. Structural Validation (Info Object)
-        info_object = self.oas.get("info")
-        if not info_object or not isinstance(info_object, dict):
+        # 1. Structural Validation
+        info_object = self._get_info_object()
+        
+        if info_object is None:
             self.add_evaluation("fail", {"reason": "missing or invalid info object"})
             return
         
         # 2. Robust Configuration Retrieval
         # We safely drill down into the config object. If keys are missing, 
         # we default to an empty dict (implies no specific constraints like min-words).
-        description_config = config.get("descriptions", {})
+        description_config = self.config.get("descriptions", {})
         if not isinstance(description_config, dict):
              description_config = {}
              
@@ -446,9 +458,10 @@ class QualityEvaluator:
         2. **Type Safety**: Ensures 'contact' is a dictionary before accessing keys.
         3. **Granular Errors**: Distinguishes between "missing field" and "invalid format".
         """
-        # 1. Structural Validation (Info Object)
-        info_object = self.oas.get("info")
-        if not info_object or not isinstance(info_object, dict):
+        # 1. Structural Validation
+        info_object = self._get_info_object()
+        
+        if info_object is None:
             self.add_evaluation("fail", {"reason": "missing or invalid info object"})
             return
 
@@ -469,11 +482,11 @@ class QualityEvaluator:
 
         # --- Check Email ---
         if "email" in contact_obj:
-            email_value = contact_obj["email"]
+            raw_email = str(contact_obj["email"]) if contact_obj["email"] else ""
+            email_value = raw_email.strip() 
+
             if self.has_content(email_value):
-                # Basic Regex for email validation (User@Domain)
-                email_pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
-                if re.match(email_pattern, email_value):
+                if self.EMAIL_PATTERN.match(email_value):
                     valid_method_found = True
                 else:
                     errors.append(f"invalid email format: '{email_value}'")
@@ -532,9 +545,10 @@ class QualityEvaluator:
            'Major.Minor.Patch' format and adds this metadata to the report.
         3. **Defensive Access:** Safely navigates the 'info' object.
         """
-        # 1. Structural Validation (Info Object)
-        info_object = self.oas.get("info")
-        if not info_object or not isinstance(info_object, dict):
+        # 1. Structural Validation
+        info_object = self._get_info_object()
+        
+        if info_object is None:
             self.add_evaluation("fail", {"reason": "missing or invalid info object"})
             return
 
@@ -564,8 +578,7 @@ class QualityEvaluator:
         # 5. Format Analysis (SemVer)
         # Matches patterns like "1.0", "1.0.0", "1.0.0-beta".
         # This is a quality indicator, not a strict failure condition (unless you want strict mode).
-        semver_pattern = r"^\d+\.\d+(\.\d+)?.*$"
-        is_semver = bool(re.match(semver_pattern, version_value.strip()))
+        is_semver = bool(self.SEMVER_PATTERN.match(version_value.strip()))
 
         # Pass the evaluation, but include the SemVer status in the data
         self.add_evaluation("pass", {
@@ -593,9 +606,10 @@ class QualityEvaluator:
            just whitespace.
 
         """
-        # 1. Structural Validation (Info Object)
-        info_object = self.oas.get("info")
-        if not info_object or not isinstance(info_object, dict):
+        # 1. Structural Validation
+        info_object = self._get_info_object()
+        
+        if info_object is None:
             self.add_evaluation("fail", {"reason": "missing or invalid info object"})
             return
         
@@ -655,9 +669,9 @@ class QualityEvaluator:
 
         """
         # 1. Structural Validation (Info Object)
-        # We use .get() to avoid KeyErrors and check type immediately.
-        info_object = self.oas.get("info")
-        if not info_object or not isinstance(info_object, dict):
+        info_object = self._get_info_object()
+        
+        if info_object is None:
             self.add_evaluation("fail", {"reason": "missing or invalid info object"})
             return
         
@@ -801,7 +815,6 @@ class QualityEvaluator:
             result_entry = {"url": url}
             
             try:
-                # Timeout is crucial for Quality Tools to avoid hanging indefinitely.
                 response = requests.get(url, timeout=5)
                 
                 # We consider the server valid if we get ANY HTTP response (even 401/403/404).
@@ -910,15 +923,16 @@ class QualityEvaluator:
         a description that meets the configured constraints (length, keywords).
 
         Refactoring Improvements:
-        1. **Optimized Lookup:** HTTP methods are defined in a Set for O(1) lookup performance.
-        2. **Shadowing Fix:** Renamed the loop variable 'id' to 'violation'.
-        3. **Defensive Typing:** Explicitly checks that path items and operations are dictionaries.
-        4. **Robust Configuration:** Uses safe getters for configuration values.
+        1. **DRY Compliance:** Uses `_yield_operations` helper to avoid code duplication 
+           in traversing the OAS structure.
+        2. **Optimized Lookup:** HTTP methods checks are handled centrally by the helper.
+        3. **Robust Configuration:** Uses safe getters for configuration values.
 
         Configuration:
             Requires 'config["descriptions"]["routes"]' containing 'min-percentage'.
         """
         # 1. Structural Validation
+        # We still check this explicitly to fail fast if the "paths" key is missing entirely.
         if "paths" not in self.oas or not isinstance(self.oas["paths"], dict):
             self.add_evaluation("fail", {"reason": "missing paths field"})
             return
@@ -929,64 +943,37 @@ class QualityEvaluator:
         violation_details: Dict[str, int] = {}
 
         # Robust configuration retrieval
-        constraints = config.get("descriptions", {}).get("routes", {})
+        constraints = self.config.get("descriptions", {}).get("routes", {})
         min_percentage = constraints.get("min-percentage", 0.0)
 
-        # Defined outside the loop for performance
-        valid_methods: Set[str] = {
-            "get", "post", "put", "patch", "delete", 
-            "head", "connect", "options", "trace"
-        }
+        # 3. Iterate using the Generator Helper
+        # The helper handles the loops over paths/methods and the type validation.
+        for _, _, operation in self._yield_operations():
+            total_operations += 1
 
-        # 3. Iterate through paths and operations
-        for path, path_item in self.oas["paths"].items():
-            if not isinstance(path_item, dict):
-                continue
+            # 4. Check Description
+            # check_description returns a list of error strings (e.g. ["too short"])
+            violations: List[str] = self.check_description(operation, constraints)
 
-            for method, operation in path_item.items():
-                # Normalize method to lowercase and check validity
-                if method.lower() not in valid_methods:
-                    continue
-                
-                if not isinstance(operation, dict):
-                    continue
-
-                total_operations += 1
-
-                # 4. Check Description
-                # check_description returns a list of error strings (e.g. ["too short"])
-                violations: List[str] = self.check_description(operation, constraints)
-
-                if not violations:
-                    valid_operations += 1
-                else:
-                    # Aggregate violation details
-                    for violation in violations:
-                        # Use 'violation' instead of 'id' to avoid shadowing built-in
-                        violation_details[violation] = violation_details.get(violation, 0) + 1
+            if not violations:
+                valid_operations += 1
+            else:
+                # Aggregate violation details
+                for violation in violations:
+                    violation_details[violation] = violation_details.get(violation, 0) + 1
 
         # 5. Calculate and Register Outcome
-        if total_operations == 0:
-            self.add_evaluation("pass", {"reason": "no operations found in API"})
-            return
-
-        actual_percentage = valid_operations / total_operations
-
-        stats = {
-            "nb-routes-total": total_operations,
-            "nb-routes-with-valid-desc": valid_operations,
-            "percentage": round(actual_percentage, 2),
-            "min-percentage": min_percentage,
-            "invalid-details": violation_details
-        }
-
-        if actual_percentage < min_percentage:
-            self.add_evaluation("fail", {
-                "reason": "insufficient route descriptions", 
-                **stats
-            })
-        else:
-            self.add_evaluation("pass", stats)
+        self._evaluate_ratio(
+            total=total_operations,
+            valid=valid_operations,
+            min_percentage=min_percentage,
+            details={
+                "nb-routes-total": total_operations,
+                "nb-routes-with-valid-desc": valid_operations,
+                "invalid-details": violation_details
+            },
+            fail_msg="insufficient route descriptions"
+        )
 
 
     def evaluate_response_descriptions(self) -> None:
@@ -1020,71 +1007,50 @@ class QualityEvaluator:
         violation_details: Dict[str, int] = {}
 
         # Robust configuration retrieval
-        constraints = config.get("descriptions", {}).get("responses", {})
+        constraints = self.config.get("descriptions", {}).get("responses", {})
         min_percentage = constraints.get("min-percentage", 0.0)
 
-        valid_methods: Set[str] = {
-            "get", "post", "put", "patch", "delete", 
-            "head", "connect", "options", "trace"
-        }
-
-        # 3. Iterate through paths and operations
-        for path, path_item in self.oas["paths"].items():
-            if not isinstance(path_item, dict):
+        # 3. Iterate using the Generator Helper
+        for _, _, operation in self._yield_operations():
+            
+            # Specific Logic: We need the 'responses' block
+            if "responses" not in operation:
+                continue
+            
+            responses_block = operation["responses"]
+            if not isinstance(responses_block, dict):
                 continue
 
-            for method, operation in path_item.items():
-                # Filter for valid HTTP methods and valid operation objects
-                if method.lower() not in valid_methods or not isinstance(operation, dict):
+            # 4. Evaluate each response inside the operation
+            # We also use '_' for status_code as we don't use it in the logic below
+            for _, response_data in responses_block.items():
+                if not isinstance(response_data, dict):
                     continue
 
-                # If 'responses' is missing, we skip (do not assume +2 arbitrary count)
-                if "responses" not in operation:
-                    continue
-                
-                responses_block = operation["responses"]
-                if not isinstance(responses_block, dict):
-                    continue
+                total_responses += 1
 
-                # 4. Evaluate each response
-                for status_code, response_data in responses_block.items():
-                    if not isinstance(response_data, dict):
-                        continue
+                # Check description using the helper method
+                violations: List[str] = self.check_description(response_data, constraints)
 
-                    total_responses += 1
-
-                    # Check description using the helper method
-                    violations: List[str] = self.check_description(response_data, constraints)
-
-                    if not violations:
-                        valid_responses += 1
-                    else:
-                        # Aggregate violation details
-                        for violation in violations:
-                            violation_details[violation] = violation_details.get(violation, 0) + 1
+                if not violations:
+                    valid_responses += 1
+                else:
+                    # Aggregate violation details
+                    for violation in violations:
+                        violation_details[violation] = violation_details.get(violation, 0) + 1
 
         # 5. Calculate and Register Outcome
-        if total_responses == 0:
-            self.add_evaluation("pass", {"reason": "no responses found to evaluate"})
-            return
-
-        actual_percentage = valid_responses / total_responses
-
-        stats = {
-            "nb-responses-total": total_responses,
-            "nb-responses-with-valid-desc": valid_responses,
-            "percentage": round(actual_percentage, 2),
-            "min-percentage": min_percentage,
-            "invalid-details": violation_details
-        }
-
-        if actual_percentage < min_percentage:
-            self.add_evaluation("fail", {
-                "reason": "insufficient response descriptions", 
-                **stats
-            })
-        else:
-            self.add_evaluation("pass", stats)
+        self._evaluate_ratio(
+            total=total_responses,
+            valid=valid_responses,
+            min_percentage=min_percentage,
+            details={
+                "nb-responses-total": total_responses,
+                "nb-responses-with-valid-desc": valid_responses,
+                "invalid-details": violation_details
+            },
+            fail_msg="insufficient response descriptions"
+        )
 
 
     def evaluate_parameter_descriptions(self) -> None:
@@ -1116,73 +1082,49 @@ class QualityEvaluator:
         violation_details: Dict[str, int] = {} 
 
         # Robust configuration retrieval
-        constraints = config.get("descriptions", {}).get("parameters", {})
+        constraints = self.config.get("descriptions", {}).get("parameters", {})
         min_percentage = constraints.get("min-percentage", 0.0)
 
-        valid_methods: Set[str] = {
-            "get", "post", "put", "patch", "delete", 
-            "head", "connect", "options", "trace"
-        }
+        # 3. Iterate using the Generator Helper
+        for _, _, operation in self._yield_operations():
 
-        # 3. Iterate through paths and operations
-        for path, path_item in self.oas["paths"].items():
-            if not isinstance(path_item, dict):
+            # Check if parameters exist for this operation
+            if "parameters" not in operation:
                 continue
 
-            for method, operation in path_item.items():
-                # Filter for valid HTTP methods and valid operation objects
-                if method.lower() not in valid_methods or not isinstance(operation, dict):
+            parameters_list = operation["parameters"]
+            if not isinstance(parameters_list, list):
+                continue
+            
+            # 4. Evaluate each parameter
+            for parameter_data in parameters_list:
+                if not isinstance(parameter_data, dict):
                     continue
 
-                # Check if parameters exist for this operation
-                if "parameters" not in operation:
-                    continue
+                total_parameters += 1
 
-                parameters_list = operation["parameters"]
-                if not isinstance(parameters_list, list):
-                    continue
-                
-                # 4. Evaluate each parameter
-                for parameter_data in parameters_list:
-                    if not isinstance(parameter_data, dict):
-                        continue
+                # Helper function check_description returns a list of error strings
+                violations: List[str] = self.check_description(parameter_data, constraints)
 
-                    total_parameters += 1
-
-                    # Helper function check_description returns a list of error strings
-                    violations: List[str] = self.check_description(parameter_data, constraints)
-
-                    if not violations:
-                        valid_parameters += 1
-                    else:
-                        # Aggregate violation details
-                        for violation in violations:
-                            # renamed 'id' to 'violation' to avoid shadowing built-in
-                            violation_details[violation] = violation_details.get(violation, 0) + 1
+                if not violations:
+                    valid_parameters += 1
+                else:
+                    # Aggregate violation details
+                    for violation in violations:
+                        violation_details[violation] = violation_details.get(violation, 0) + 1
 
         # 5. Calculate and Register Outcome
-        if total_parameters == 0:
-            self.add_evaluation("pass", {"reason": "no parameters found in API"})
-            return
-
-        actual_percentage = valid_parameters / total_parameters
-
-        # Prepare the data payload for the report
-        stats = {
-            "nb-parameters-total": total_parameters,
-            "nb-parameters-with-valid-desc": valid_parameters,
-            "percentage": round(actual_percentage, 2),
-            "min-percentage": min_percentage,
-            "invalid-details": violation_details
-        }
-
-        if actual_percentage < min_percentage:
-            self.add_evaluation("fail", {
-                "reason": "insufficient parameter descriptions", 
-                **stats
-            })
-        else:
-            self.add_evaluation("pass", stats)
+        self._evaluate_ratio(
+            total=total_parameters,
+            valid=valid_parameters,
+            min_percentage=min_percentage,
+            details={
+                "nb-parameters-total": total_parameters,
+                "nb-parameters-with-valid-desc": valid_parameters,
+                "invalid-details": violation_details
+            },
+            fail_msg="insufficient parameter descriptions"
+        )
 
 
     def evaluate_response_examples(self) -> None:
@@ -1215,79 +1157,55 @@ class QualityEvaluator:
         total_media_types: int = 0
         valid_media_types: int = 0
         
-        constraints = config.get("examples", {}).get("responses", {})
+        constraints = self.config.get("examples", {}).get("responses", {})
         min_percentage = constraints.get("min-percentage", 0.0)
 
-        valid_methods: Set[str] = {
-            "get", "post", "put", "patch", "delete", 
-            "head", "connect", "options", "trace"
-        }
+        # 3. Iterate using the Generator Helper
+        for _, _, operation in self._yield_operations():
 
-        # 3. Iterate through paths and operations
-        for path, path_item in self.oas["paths"].items():
-            if not isinstance(path_item, dict):
+            # Specific Logic: Check if responses exist
+            if "responses" not in operation or not isinstance(operation["responses"], dict):
                 continue
 
-            for method, operation in path_item.items():
-                # Filter for valid HTTP methods and valid operation objects
-                if method.lower() not in valid_methods or not isinstance(operation, dict):
+            for response_code, response_data in operation["responses"].items():
+                if not isinstance(response_data, dict):
                     continue
 
-                # If 'responses' is missing, we skip it (handled by structural validation rules)
-                if "responses" not in operation or not isinstance(operation["responses"], dict):
+                # 4. Check Content
+                # We only evaluate responses that actually declare a 'content' payload.
+                # This prevents penalizing empty responses (e.g., 204 No Content).
+                if "content" not in response_data:
                     continue
-
-                for response_code, response_data in operation["responses"].items():
-                    if not isinstance(response_data, dict):
+                
+                content_block = response_data["content"]
+                if not isinstance(content_block, dict):
+                    continue
+                
+                # Iterate over defined media types (e.g., "application/json")
+                for media_type, media_data in content_block.items():
+                    if not isinstance(media_data, dict):
                         continue
 
-                    # 4. Check Content
-                    # We only evaluate responses that actually declare a 'content' payload.
-                    # This prevents penalizing empty responses (e.g., 204 No Content, 201 Created without body).
-                    if "content" not in response_data:
-                        continue
+                    total_media_types += 1
+
+                    # 5. Check for Example Existence (Robust Logic)
+                    # Using 'in' handles values like False, 0, or empty strings correctly.
+                    has_example = "example" in media_data or "examples" in media_data
                     
-                    content_block = response_data["content"]
-                    if not isinstance(content_block, dict):
-                        continue
-                    
-                    # Iterate over defined media types (e.g., "application/json", "application/xml")
-                    for media_type, media_data in content_block.items():
-                        if not isinstance(media_data, dict):
-                            continue
-
-                        total_media_types += 1
-
-                        # 5. Check for Example Existence (Robust Logic)
-                        # "example" (OAS 2/3 singular) or "examples" (OAS 3 map)
-                        # Using 'in' handles values like False, 0, or empty strings correctly.
-                        has_example = "example" in media_data or "examples" in media_data
-                        
-                        if has_example:
-                            valid_media_types += 1
+                    if has_example:
+                        valid_media_types += 1
 
         # 6. Calculate and Register Outcome
-        if total_media_types == 0:
-            # If no media types are defined in the entire API, this rule is N/A or passed.
-            self.add_evaluation("pass", {"reason": "no content-bearing responses found"})
-            return
-
-        actual_percentage = valid_media_types / total_media_types
-
-        details = {
-            "nb-media-total": total_media_types,
-            "nb-media-with-valid-example": valid_media_types,
-            "percentage": round(actual_percentage, 2),
-            "min-percentage": min_percentage
-        }
-
-        if actual_percentage < min_percentage:
-            self.add_evaluation("fail", {
-                "reason": "insufficient response examples", 
-                **details
-            })
-        else:
-            self.add_evaluation("pass", details)
+        self._evaluate_ratio(
+            total=total_media_types,
+            valid=valid_media_types,
+            min_percentage=min_percentage,
+            details={
+                "nb-media-total": total_media_types,
+                "nb-media-with-valid-example": valid_media_types
+            },
+            fail_msg="insufficient response examples"
+        )
 
 
     def evaluate_parameter_examples(self) -> None:
@@ -1304,7 +1222,8 @@ class QualityEvaluator:
         Configuration:
             Requires 'config["examples"]["parameters"]["min-percentage"]' (float between 0.0 and 1.0).
         """
-        # 1. Validate structure existence
+        # 1. Structural Validation
+        # We explicitly check for "paths" to report a specific structural error if missing.
         if "paths" not in self.oas or not isinstance(self.oas["paths"], dict):
             self.add_evaluation("fail", {"reason": "missing paths field"})
             return
@@ -1314,75 +1233,46 @@ class QualityEvaluator:
         valid_parameters: int = 0
         
         # Robust configuration retrieval
-        constraints = config.get("examples", {}).get("parameters", {})
+        constraints = self.config.get("examples", {}).get("parameters", {})
         min_percentage = constraints.get("min-percentage", 0.0)
 
-        # Define valid HTTP verbs (normalized to lowercase)
-        valid_methods: Set[str] = {
-            "get", "post", "put", "patch", "delete", 
-            "head", "connect", "options", "trace"
-        }
+        # 3. Iterate using the Generator Helper
+        for _, _, operation in self._yield_operations():
 
-        # 3. Iterate through paths and operations
-        for path, path_item in self.oas["paths"].items():
-            if not isinstance(path_item, dict):
+            # Check if parameters exist for this operation
+            if "parameters" not in operation:
                 continue
 
-            # NOTE: OpenAPI allows parameters at the Path Item level (shared by all methods).
-            # For strict compliance, one should merge path_item.get("parameters", []) 
-            # with operation parameters. This implementation focuses on Operation parameters 
-            # to match the original scope, but handles them safely.
+            parameters_list = operation["parameters"]
+            if not isinstance(parameters_list, list):
+                continue
 
-            for method, operation in path_item.items():
-                # Skip non-HTTP method fields (like 'summary' or 'description' at path level)
-                if method.lower() not in valid_methods or not isinstance(operation, dict):
+            # 4. Evaluate parameters
+            for parameter in parameters_list:
+                if not isinstance(parameter, dict):
                     continue
 
-                # Check if parameters exist for this operation
-                if "parameters" not in operation:
-                    continue
+                total_parameters += 1
+
+                # Check for Example Existence (Robust Logic)
+                # We use key containment ('in') instead of .get() truthiness.
+                # This ensures that example: 0 (integer) or example: false (boolean) are counted as valid.
+                has_example = "example" in parameter or "examples" in parameter
                 
-                parameters_list = operation["parameters"]
-                if not isinstance(parameters_list, list):
-                    continue
-
-                for parameter in parameters_list:
-                    if not isinstance(parameter, dict):
-                        continue
-
-                    total_parameters += 1
-
-                    # 4. Check for Example Existence (Robust Logic)
-                    # We use key containment ('in') instead of .get() truthiness.
-                    # This ensures that example: 0 (integer) or example: false (boolean) are counted as valid.
-                    has_example = "example" in parameter or "examples" in parameter
-                    
-                    if has_example:
-                        valid_parameters += 1
+                if has_example:
+                    valid_parameters += 1
 
         # 5. Calculate and Register Outcome
-        if total_parameters == 0:
-            # If the API has no parameters at all, this rule is technically passed (or N/A).
-            self.add_evaluation("pass", {"reason": "no parameters found in API"})
-            return
-
-        # Calculate ratio (0.0 to 1.0)
-        actual_percentage = valid_parameters / total_parameters
-
-        details = {
-            "nb-parameters-total": total_parameters,
-            "nb-parameters-with-valid-example": valid_parameters,
-            "percentage": round(actual_percentage, 2),
-            "min-percentage": min_percentage
-        }
-
-        if actual_percentage < min_percentage:
-            self.add_evaluation("fail", {
-                "reason": "insufficient parameter examples", 
-                **details
-            })
-        else:
-            self.add_evaluation("pass", details)
+        self._evaluate_ratio(
+            total=total_parameters,
+            valid=valid_parameters,
+            min_percentage=min_percentage,
+            details={
+                "nb-parameters-total": total_parameters,
+                "nb-parameters-with-valid-example": valid_parameters
+            },
+            fail_msg="insufficient parameter examples"
+        )
 
 
     def get_oas_servers(self) -> List[str]:
@@ -1475,7 +1365,7 @@ class QualityEvaluator:
 
         # Normalize: Replace newlines/tabs with spaces, strip whitespace, convert to lowercase.
         # Ensuring raw_description is a string is handled by the logic above/normalization.
-        description_text = re.sub(r"\s+", " ", str(raw_description)).strip().lower()
+        description_text = self.WHITESPACE_PATTERN.sub(" ", str(raw_description)).strip().lower()
         
         # Calculate word count based on whitespace separation
         word_count = len(description_text.split())
@@ -1618,31 +1508,112 @@ class QualityEvaluator:
             str: The name of the group (e.g., 'governance', 'security') or 'uncategorized'.
         """
         # Access the global config object (ensure 'config' is imported)
-        groups = config.get("groups", {})
+        groups = self.config.get("groups", {})
 
         for group_name, rules_list in groups.items():
             if rule_id in rules_list:
                 return group_name
             
         return "uncategorized"
-        
 
-    def execute(self):
+    def _get_info_object(self) -> Optional[Dict[str, Any]]:
+        """
+        Safe accessor for the info object. 
+        Returns None if missing or invalid, decoupling data retrieval from reporting logic.
+        """
+        info = self.oas.get("info")
+        if not info or not isinstance(info, dict):
+            return None
+        return info    
 
-        # try to resolve potential refs
+    def _yield_operations(self):
+        """
+        Generator that yields all valid operations in the OAS.
+        Yields: (path_string, method_string, operation_dict)
+        """
+        if "paths" not in self.oas or not isinstance(self.oas["paths"], dict):
+            return
+
+        for path, path_item in self.oas["paths"].items():
+            if not isinstance(path_item, dict):
+                continue
+
+            for method, operation in path_item.items():
+                if method.lower() not in self.VALID_METHODS or not isinstance(operation, dict):
+                    continue
+                
+                yield path, method, operation
+
+    
+    def _evaluate_ratio(
+        self, 
+        total: int, 
+        valid: int, 
+        min_percentage: float, 
+        details: Dict[str, Any], 
+        fail_msg: str
+    ) -> None:
+        """Evaluates a pass/fail based on a valid/total ratio."""
+        if total == 0:
+            self.add_evaluation("pass", {"reason": "no elements found (N/A)"})
+            return
+
+        actual_percentage = valid / total
+        details["percentage"] = round(actual_percentage, 2)
+        details["min-percentage"] = min_percentage
+
+        if actual_percentage < min_percentage:
+            self.add_evaluation("fail", {"reason": fail_msg, **details})
+        else:
+            self.add_evaluation("pass", details)
+
+
+    def execute(self) -> Dict[str, Any]:
+        """
+        Orchestrates the full quality audit pipeline.
+
+        Returns:
+            Dict[str, Any]: The complete evaluation report.
+        """
+
+        # ---------------------------------------------------------
+        # 1. JSON SYNTAX CHECK (Local Mode Only)
+        # ---------------------------------------------------------
+        if self.mode == "local":
+            self.evaluate_validate_json()
+            
+            # CRITICAL: If the file is not valid JSON, we stop immediately.
+            # There is no point in trying to parse OAS structures on broken JSON.
+            json_result = self.evaluations.get("evaluate-validate-json", {})
+            if json_result.get("outcome") == "fail":
+                self.evaluations["quality"] = "0%"
+                return self.evaluations
+
+        # ---------------------------------------------------------
+        # 2. REFERENCE RESOLUTION ($ref)
+        # ---------------------------------------------------------
         try:
-            self.oas = replace_refs(self.oas)
-        except:
-            pass
+            # We provide the base_uri so relative paths in local files work correctly
+            base_uri = self.oas_path if self.oas_path else ""
+            self.oas = replace_refs(self.oas, base_uri=base_uri)
+        except Exception as e:
+            # We log the warning internally but continue with best-effort analysis
+            print(f"[Warning] Reference resolution failed: {e}")
 
-        # formats
-        self.evaluate_validate_json()
+        # ---------------------------------------------------------
+        # 3. STRUCTURAL VALIDATION (Schema)
+        # ---------------------------------------------------------
         self.evaluate_validate_oas()
 
-        # OAS version
-        self.evaluate_oas_version()
+        # Note: We continue execution even if schema validation fails, 
+        # allowing the user to see other quality issues (best effort).
 
-        # metadata
+        # ---------------------------------------------------------
+        # 4. EXECUTE RULE GROUPS
+        # ---------------------------------------------------------
+        
+        # Metadata & Versioning
+        self.evaluate_oas_version()
         self.evaluate_api_title()
         self.evaluate_api_description()
         self.evaluate_api_contact()
@@ -1650,22 +1621,32 @@ class QualityEvaluator:
         self.evaluate_api_license()
         self.evaluate_api_terms()
 
-        # server
+        # Server Configuration
         self.evaluate_server_url()
         self.evaluate_server_validity()
         self.evaluate_scheme()
 
-        # descriptions
+        # Documentation Details
         self.evaluate_route_descriptions()
         self.evaluate_response_descriptions()
         self.evaluate_parameter_descriptions()
 
-        # examples
+        # Examples Coverage
         self.evaluate_response_examples()
         self.evaluate_parameter_examples()
 
-        # quality percentage
-        quality = round((self.evaluations["overall"]["pass"] / self.evaluations["overall"]["total"]) * 100)
+        # ---------------------------------------------------------
+        # 5. SCORING (Safe Calculation)
+        # ---------------------------------------------------------
+        total = self.evaluations["overall"]["total"]
+        passed = self.evaluations["overall"]["pass"]
+
+        # Prevent ZeroDivisionError if total is 0 (e.g., empty file)
+        if total > 0:
+            quality = round((passed / total) * 100)
+        else:
+            quality = 0
+            
         self.evaluations["quality"] = f"{quality}%"
 
-        #print(json.dumps(self.evaluations, indent=4))
+        return self.evaluations

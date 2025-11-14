@@ -1,5 +1,4 @@
-import json
-import sys
+import json, sys
 from pathlib import Path
 from typing import Any, Dict
 
