@@ -1,46 +1,97 @@
-import json, os
+import json, sys
+from pathlib import Path
+
 from config import get_config
 from QualityEvaluator import QualityEvaluator
 
-
-config = get_config()
-
-
 def main():
+    """
+    Main entry point for the OAS Quality Tool.
 
-    in_path = config["in-path"]
+    This script iterates through all OpenAPI JSON files located in the input directory,
+    runs the QualityEvaluator pipeline on each, and exports the results to the 
+    configured output directory.
+    """
 
-    # create output folder if it does not exist yet
-    out_path = config["out-path"]
-    out_path = os.path.dirname(f"{out_path}/")
-    if out_path:
-        os.makedirs(out_path, exist_ok=True)
+    # ---------------------------------------------------------
+    # 1. Load Configuration
+    # ---------------------------------------------------------
+    try:
+        config = get_config()
+    except Exception as e:
+        print(f"[CRITICAL] Cannot load configuration: {e}")
+        sys.exit(1)
 
-    evaluator = QualityEvaluator()
+    # ---------------------------------------------------------
+    # 2. Setup Directories (using Pathlib)
+    # ---------------------------------------------------------
+    try:
+        # .resolve() ensures we work with absolute paths
+        in_dir = Path(config["in-path"]).resolve()
+        out_dir = Path(config["out-path"]).resolve()
+    except KeyError as e:
+        print(f"[CRITICAL] Missing required configuration key: {e}")
+        sys.exit(1)
 
-    files = os.listdir(in_path)
-    files.sort()
+    # Ensure output directory exists (mkdir -p)
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"[CRITICAL] Could not create output directory: {e}")
+        sys.exit(1)
 
+    # Verify input directory existence
+    if not in_dir.exists():
+        print(f"[ERROR] Input directory does not exist: {in_dir}")
+        sys.exit(1)
+
+    # ---------------------------------------------------------
+    # 3. Initialize Evaluator
+    # ---------------------------------------------------------
+    # Inject configuration once via the constructor
+    evaluator = QualityEvaluator(configuration=config)
+
+    # ---------------------------------------------------------
+    # 4. Retrieve Files
+    # ---------------------------------------------------------
+    # Filter for .json files only to avoid processing system files (like .DS_Store)
+    files = sorted([f for f in in_dir.iterdir() if f.is_file() and f.suffix == ".json"])
+    
     nb_total = len(files)
-    nb_current = 0
+    if nb_total == 0:
+        print(f"[INFO] No .json files found in {in_dir}")
+        return
 
-    for file_name in files:
-        file_path = os.path.join(in_path, file_name)
+    print(f"[INFO] Starting evaluation of {nb_total} files...\n")
 
-        nb_current += 1
-        api_name = file_name.replace(".json", "")
+    # ---------------------------------------------------------
+    # 5. Processing Loop
+    # ---------------------------------------------------------
+    for index, file_path in enumerate(files, 1):
+        try:
+            # Clean extraction of the API name (e.g., "my-api.v1.json" -> "my-api.v1")
+            api_name = file_path.stem 
 
-        evaluator.setup_evaluation_local(file_path)
-        evaluator.execute()
+            # Setup & Execution
+            evaluator.setup_evaluation_local(file_path)
+            report = evaluator.execute()
 
-        quality = evaluator.evaluations["quality"]
+            # Retrieve score (default to N/A if calculation failed)
+            quality = report.get("quality", "N/A")
 
-        out_name = f"evaluation-{api_name}.json"
-        with open(f"outputs/{out_name}", "w") as file:
-            json.dump(evaluator.evaluations, file, indent=4)
+            # Export Report
+            out_file = out_dir / f"evaluation-{api_name}.json"
+            with open(out_file, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=4)
 
-        print(f"({nb_current}/{nb_total}) {quality} {api_name}")
+            # Console Logging
+            print(f"[{index}/{nb_total}] Score: {quality} -> {api_name}")
 
+        except Exception as e:
+            # Batch processing resilience: If one file fails, log it and continue to the next.
+            print(f"[{index}/{nb_total}] ERROR processing {file_path.name}: {e}")
+
+    print(f"\n[DONE] Reports generated in: {out_dir}")
 
 if __name__ == "__main__":
     main()
