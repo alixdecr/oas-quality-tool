@@ -1561,8 +1561,11 @@ class QualityEvaluator:
         fail_msg: str
     ) -> None:
         """Evaluates a pass/fail based on a valid/total ratio."""
+
+        rule_id = details.get("rule_id", None)
+
         if total == 0:
-            self.add_evaluation("pass", {"reason": "no elements found (N/A)"})
+            self.add_evaluation("pass", {"reason": "no elements found (N/A)"}, rule_id)
             return
 
         actual_percentage = valid / total
