@@ -968,6 +968,7 @@ class QualityEvaluator:
             valid=valid_operations,
             min_percentage=min_percentage,
             details={
+                "rule_id": "evaluate-route-descriptions",
                 "nb-routes-total": total_operations,
                 "nb-routes-with-valid-desc": valid_operations,
                 "invalid-details": violation_details
@@ -1045,6 +1046,7 @@ class QualityEvaluator:
             valid=valid_responses,
             min_percentage=min_percentage,
             details={
+                "rule_id": "evaluate-response-descriptions",
                 "nb-responses-total": total_responses,
                 "nb-responses-with-valid-desc": valid_responses,
                 "invalid-details": violation_details
@@ -1119,6 +1121,7 @@ class QualityEvaluator:
             valid=valid_parameters,
             min_percentage=min_percentage,
             details={
+                "rule_id": "evaluate-parameter-descriptions",
                 "nb-parameters-total": total_parameters,
                 "nb-parameters-with-valid-desc": valid_parameters,
                 "invalid-details": violation_details
@@ -1201,6 +1204,7 @@ class QualityEvaluator:
             valid=valid_media_types,
             min_percentage=min_percentage,
             details={
+                "rule_id": "evaluate-response-examples",
                 "nb-media-total": total_media_types,
                 "nb-media-with-valid-example": valid_media_types
             },
@@ -1268,6 +1272,7 @@ class QualityEvaluator:
             valid=valid_parameters,
             min_percentage=min_percentage,
             details={
+                "rule_id": "evaluate-parameter-examples",
                 "nb-parameters-total": total_parameters,
                 "nb-parameters-with-valid-example": valid_parameters
             },
@@ -1456,6 +1461,8 @@ class QualityEvaluator:
         # Safe initialization of mutable default argument
         if data is None:
             data = {}
+
+        rule_id = data.get("rule_id", rule_id)
 
         # 1. Determine the Rule ID
         # If not provided, we dynamically inspect the call stack to get the caller's name.
