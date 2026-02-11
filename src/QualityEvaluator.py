@@ -208,9 +208,7 @@ class QualityEvaluator:
             self.add_evaluation("fail", {
                 "reason": "schema validation failed",
                 "error-message": e.message if hasattr(e, 'message') else str(e),
-                "error-location": error_path,
-                "validator": getattr(e, 'validator', 'unknown'),
-                "validator-value": getattr(e, 'validator_value', 'unknown')
+                "error-location": error_path
             })
 
         except Exception as e:
