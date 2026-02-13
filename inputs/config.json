@@ -2,6 +2,15 @@
     "in-path": "inputs/oas",
     "out-path":"outputs",
 
+    "normalization-weights": {
+        "format": 0.1667,
+        "oas-version": 0.1667,
+        "metadata": 0.1667,
+        "server": 0.1667,
+        "descriptions": 0.1667,
+        "examples": 0.1667
+    },
+
     "descriptions": {
 
         "api":{

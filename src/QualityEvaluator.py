@@ -1651,10 +1651,20 @@ class QualityEvaluator:
 
         # Prevent ZeroDivisionError if total is 0 (e.g., empty file)
         if total > 0:
-            quality = round((passed / total) * 100)
+            quality = passed / total
         else:
             quality = 0
             
-        self.evaluations["quality"] = f"{quality}%"
+        self.evaluations["quality"] = quality
+
+        # normalized quality
+        weights = self.config.get("normalization-weights", {"format": 0.1667, "oas-version": 0.1667, "metadata": 0.1667, "server": 0.1667, "descriptions": 0.1667, "examples": 0.1667})
+
+        score = 0
+
+        for group in self.evaluations["evaluation-groups"]:
+            score += (self.evaluations["evaluation-groups"][group]["pass"] / self.evaluations["evaluation-groups"][group]["total"]) * weights[group]
+
+        self.evaluations["quality-normalized"] = score
 
         return self.evaluations
