@@ -77,7 +77,8 @@ def main():
             report = evaluator.execute()
 
             # Retrieve score (default to N/A if calculation failed)
-            quality = report.get("quality", "N/A")
+            standard_quality = "{:.2f}".format(round(report.get("quality", {}).get("standard", 0) * 100, 2)) + "%"
+            normalized_quality = "{:.2f}".format(round(report.get("quality", {}).get("normalized", 0) * 100, 2)) + "%"
 
             # Export Report
             out_file = out_dir / f"evaluation-{api_name}.json"
@@ -85,7 +86,7 @@ def main():
                 json.dump(report, f, indent=4)
 
             # Console Logging
-            print(f"[{index}/{nb_total}] Score: {quality} -> {api_name}")
+            print(f"[{index}/{nb_total}] Score: {standard_quality} (standard) | {normalized_quality} (normalized) -> {api_name}")
 
         except Exception as e:
             # Batch processing resilience: If one file fails, log it and continue to the next.

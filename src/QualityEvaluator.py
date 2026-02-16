@@ -80,6 +80,20 @@ class QualityEvaluator:
             "api-name": api_name,
             # Use ISO 8601 format for machine-readable timestamps (e.g., "2023-10-27T14:30:00")
             "timestamp": datetime.now().isoformat(),
+            "structure": {
+                "routes": {
+                    "total": 0,
+                    "methods": {}
+                },
+                "parameters": {
+                    "total": 0,
+                    "in": {}
+                },
+                "responses": {
+                    "total": 0,
+                    "codes": {}
+                }
+            },
             "overall": {
                 "total": 0,
                 "pass": 0,
@@ -946,7 +960,11 @@ class QualityEvaluator:
 
         # 3. Iterate using the Generator Helper
         # The helper handles the loops over paths/methods and the type validation.
-        for _, _, operation in self._yield_operations():
+        for path, method, operation in self._yield_operations():
+
+            self.evaluations["structure"]["routes"]["total"] += 1
+            self.evaluations["structure"]["routes"]["methods"][method] = self.evaluations["structure"]["routes"]["methods"].get(method, 0) + 1
+
             total_operations += 1
 
             # 4. Check Description
@@ -1021,8 +1039,11 @@ class QualityEvaluator:
                 continue
 
             # 4. Evaluate each response inside the operation
-            # We also use '_' for status_code as we don't use it in the logic below
-            for _, response_data in responses_block.items():
+            for code, response_data in responses_block.items():
+
+                self.evaluations["structure"]["responses"]["total"] += 1
+                self.evaluations["structure"]["responses"]["codes"][code] = self.evaluations["structure"]["responses"]["codes"].get(code, 0) + 1
+
                 if not isinstance(response_data, dict):
                     continue
 
@@ -1098,6 +1119,12 @@ class QualityEvaluator:
             
             # 4. Evaluate each parameter
             for parameter_data in parameters_list:
+
+                param_cat = parameter_data.get("in", "unknown")
+
+                self.evaluations["structure"]["parameters"]["total"] += 1
+                self.evaluations["structure"]["parameters"]["in"][param_cat] = self.evaluations["structure"]["parameters"]["in"].get(param_cat, 0) + 1
+
                 if not isinstance(parameter_data, dict):
                     continue
 
@@ -1651,20 +1678,21 @@ class QualityEvaluator:
 
         # Prevent ZeroDivisionError if total is 0 (e.g., empty file)
         if total > 0:
-            quality = passed / total
+            standard_quality = passed / total
         else:
-            quality = 0
-            
-        self.evaluations["quality"] = quality
+            standard_quality = 0
 
         # normalized quality
         weights = self.config.get("normalization-weights", {"format": 0.1667, "oas-version": 0.1667, "metadata": 0.1667, "server": 0.1667, "descriptions": 0.1667, "examples": 0.1667})
 
-        score = 0
+        normalized_quality = 0
 
         for group in self.evaluations["evaluation-groups"]:
-            score += (self.evaluations["evaluation-groups"][group]["pass"] / self.evaluations["evaluation-groups"][group]["total"]) * weights[group]
+            normalized_quality += (self.evaluations["evaluation-groups"][group]["pass"] / self.evaluations["evaluation-groups"][group]["total"]) * weights[group]
 
-        self.evaluations["quality-normalized"] = score
+        self.evaluations["quality"] = {
+            "standard": standard_quality,
+            "normalized": normalized_quality
+        }
 
         return self.evaluations
