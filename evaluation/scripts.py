@@ -118,3 +118,20 @@ plt.legend(
 plt.tight_layout()
 plt.savefig(CHARTS_PATH / "chart-quality-scatter-plot.pdf", format="pdf")
 plt.close()
+
+
+# ------------------
+# EVALUATIONS GRAPH
+# ------------------
+evaluations = {}
+
+for json_path in OUTPUTS_PATH.glob("*.json"):
+    with open(json_path, "r", encoding="utf-8-sig") as file:
+        data = json.load(file)
+
+    for entry in data:
+        if "evaluate" in entry:
+            if data[entry]["outcome"] == "fail":
+                evaluations[entry] = evaluations.get(entry, 0) + 1
+
+print(evaluations)
