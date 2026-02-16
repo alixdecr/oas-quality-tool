@@ -77,6 +77,9 @@ for json_path in OUTPUTS_PATH.glob("*.json"):
     colors.append(color)
     routes.append(nb_routes)
 
+    if quality < 0.4:
+        print(quality, json_path)
+
 points = list(zip(routes, qualities))
 counts = Counter(points)
 sizes = [counts[(xi, yi)] * 100 for xi, yi in points]
