@@ -19,6 +19,8 @@ CHARTS_PATH.mkdir(parents=True, exist_ok=True)
 # API SIZE BINS
 # --------------
 routes = []
+lowest = 1
+highest = 0
 
 for json_path in OUTPUTS_PATH.glob("*.json"):
     with open(json_path, "r", encoding="utf-8-sig") as file:
@@ -26,6 +28,13 @@ for json_path in OUTPUTS_PATH.glob("*.json"):
 
     nb_routes = data["structure"]["routes"]["total"]
     routes.append(nb_routes)
+
+    quality = data["quality"]["normalized"]
+
+    if quality < lowest:
+        lowest = quality
+    if quality > highest:
+        highest = quality
 
 routes = sorted(routes)
 
@@ -35,6 +44,8 @@ p35 = round(np.percentile(routes, 35))
 p65 = round(np.percentile(routes, 65))
 p95 = round(np.percentile(routes, 95))
 
+print(round(lowest * 100, 2))
+print(round(highest * 100, 2))
 print(routes)
 print(f"Micro: <= {p5}")
 print(f"Small: <= {p35}")
@@ -76,9 +87,6 @@ for json_path in OUTPUTS_PATH.glob("*.json"):
     qualities.append(quality)
     colors.append(color)
     routes.append(nb_routes)
-
-    if quality < 0.4:
-        print(quality, json_path)
 
 points = list(zip(routes, qualities))
 counts = Counter(points)
