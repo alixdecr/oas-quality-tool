@@ -1647,8 +1647,10 @@ class QualityEvaluator:
         # 4. EXECUTE RULE GROUPS
         # ---------------------------------------------------------
         
-        # Metadata & Versioning
+        # Versioning
         self.evaluate_oas_version()
+
+        # Metadata
         self.evaluate_api_title()
         self.evaluate_api_description()
         self.evaluate_api_contact()
