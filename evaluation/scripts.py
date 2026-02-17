@@ -249,3 +249,24 @@ plt.legend(
 plt.tight_layout()
 plt.savefig(CHARTS_PATH / "chart-quality.pdf", format="pdf")
 plt.close()
+
+
+# ---------------------------
+# EVALUATION DIMENSION CHART
+# ---------------------------
+evaluation_dimensions = {}
+
+for json_path in OUTPUTS_PATH.glob("*.json"):
+    with open(json_path, "r", encoding="utf-8-sig") as file:
+        data = json.load(file)
+
+    for dimension in data["evaluation-groups"]:
+        if dimension not in evaluation_dimensions:
+            evaluation_dimensions[dimension] = []
+
+        evaluation_dimensions[dimension].append(data["evaluation-groups"][dimension]["pass"] / data["evaluation-groups"][dimension]["total"])
+
+for dimension in evaluation_dimensions:
+    evaluation_dimensions[dimension] = np.mean(evaluation_dimensions[dimension])
+
+print(evaluation_dimensions)
