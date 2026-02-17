@@ -239,3 +239,77 @@ for dimension in ["format", "oas-version", "metadata", "server", "descriptions",
     plt.tight_layout()
     plt.savefig(CHARTS_PATH / f"chart-quality-dimension-{dimension}.pdf", format="pdf")
     plt.close()
+
+
+# ------------------------------
+# API SIZE CATEGORY RECAP CHART
+# ------------------------------
+qualities = {}
+
+for json_path in OUTPUTS_PATH.glob("*.json"):
+    with open(json_path, "r", encoding="utf-8-sig") as file:
+        data = json.load(file)
+
+    nb_routes = data["structure"]["routes"]["total"]
+
+    if nb_routes <= p5:
+        category = "Micro"
+    elif nb_routes <= p35:
+        category = "Small"
+    elif nb_routes <= p65:
+        category = "Medium"
+    elif nb_routes <= p95:
+        category = "Large"
+    else:
+        category = "Very Large"
+
+    if category not in qualities:
+        qualities[category] = {"general": []}
+
+    qualities[category]["general"].append(data["quality"]["normalized"])
+
+    for evaluation in data["evaluation-groups"]:
+        if evaluation not in qualities[category]:
+            qualities[category][evaluation] = []
+
+        qualities[category][evaluation].append(data["evaluation-groups"][evaluation]["pass"] / data["evaluation-groups"][evaluation]["total"])
+
+for category in qualities:
+    for evaluation in qualities[category]:
+        qualities[category][evaluation] = np.mean(qualities[category][evaluation])
+
+categories = ["Micro", "Small", "Medium", "Large", "Very Large"]
+evaluations = ["general", "format", "oas-version", "metadata", "server", "descriptions", "examples"]
+
+plt.figure(figsize=(20, 12))
+
+for eval in evaluations:
+    values = [qualities[cat][eval] for cat in categories]
+
+    if eval == "general":
+        line_width = 3.5
+        z_order = 3
+    else:
+        line_width = 2
+        z_order = 2
+
+    plt.plot(categories, values, marker="o", linewidth=line_width, alpha=0.9, zorder=z_order)
+
+plt.xlabel("API Size Category", fontweight="bold", fontsize=16, labelpad=20)
+plt.ylabel("Quality", fontweight="bold", fontsize=16, labelpad=20)
+
+ax = plt.gca()
+ax.set_axisbelow(True)
+ax.grid(axis="y", linestyle="--")
+
+plt.legend(
+    ["General", "Format", "OAS Version", "Metadata", "Server", "Descriptions", "Examples"],
+    title="Evaluation Dimensions",
+    title_fontsize=15,
+    fontsize=14,
+    loc="lower left"
+)
+
+plt.tight_layout()
+plt.savefig(CHARTS_PATH / "chart-line.pdf", format="pdf")
+plt.close()
