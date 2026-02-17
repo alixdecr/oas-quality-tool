@@ -160,7 +160,7 @@ ids = list(ids)
 counts = list(counts)
 
 plt.figure(figsize=(20, 12))
-plt.barh(ids, counts, color="tab:red")
+plt.barh(ids, counts, color="tab:orange")
 
 plt.xlabel("Count of Failing Evaluations", fontweight="bold", fontsize=16, labelpad=20)
 plt.ylabel("Evaluation ID", fontweight="bold", fontsize=16, labelpad=20)
@@ -173,7 +173,7 @@ ax.set_axisbelow(True)
 ax.grid(axis="x", linestyle="--")
 
 plt.tight_layout()
-plt.savefig(CHARTS_PATH / "chart-evaluations-count.pdf", format="pdf")
+plt.savefig(CHARTS_PATH / "chart-evaluation-count.pdf", format="pdf")
 plt.close()
 
 
@@ -247,5 +247,5 @@ plt.legend(
 )
 
 plt.tight_layout()
-plt.savefig(CHARTS_PATH / "chart-line.pdf", format="pdf")
+plt.savefig(CHARTS_PATH / "chart-quality.pdf", format="pdf")
 plt.close()
