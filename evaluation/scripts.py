@@ -15,12 +15,43 @@ CHARTS_PATH = EVALUATION_PATH / "charts"
 CHARTS_PATH.mkdir(parents=True, exist_ok=True)
 
 
+# -------------
+# GENERAL DATA
+# -------------
+qualities = []
+lowest = {
+    "api": None,
+    "value": 1
+}
+highest = {
+    "api": None,
+    "value": 0
+}
+
+for json_path in OUTPUTS_PATH.glob("*.json"):
+    with open(json_path, "r", encoding="utf-8-sig") as file:
+        data = json.load(file)
+
+    api_name = data["api-name"]
+    quality = data["quality"]["normalized"]
+    qualities.append(quality)
+
+    if quality < lowest["value"]:
+        lowest["api"] = api_name
+        lowest["value"] = quality
+    if quality > highest["value"]:
+        highest["api"] = api_name
+        highest["value"] = quality
+
+print("Best: " + str(round(highest["value"] * 100, 2)) + "% (" + highest["api"] + ")")
+print("Worst: " + str(round(lowest["value"] * 100, 2)) + "% (" + lowest["api"] + ")")
+print("Average: " + str(round(np.average(qualities) * 100, 2)) + "%")
+
+
 # --------------
 # API SIZE BINS
 # --------------
 routes = []
-lowest = 1
-highest = 0
 
 for json_path in OUTPUTS_PATH.glob("*.json"):
     with open(json_path, "r", encoding="utf-8-sig") as file:
@@ -31,11 +62,6 @@ for json_path in OUTPUTS_PATH.glob("*.json"):
 
     quality = data["quality"]["normalized"]
 
-    if quality < lowest:
-        lowest = quality
-    if quality > highest:
-        highest = quality
-
 routes = sorted(routes)
 
 # create the 5 percentile bins
@@ -44,8 +70,6 @@ p35 = round(np.percentile(routes, 35))
 p65 = round(np.percentile(routes, 65))
 p95 = round(np.percentile(routes, 95))
 
-print(round(lowest * 100, 2))
-print(round(highest * 100, 2))
 print(routes)
 print(f"Micro: <= {p5}")
 print(f"Small: <= {p35}")
@@ -134,4 +158,24 @@ for json_path in OUTPUTS_PATH.glob("*.json"):
             if data[entry]["outcome"] == "fail":
                 evaluations[entry] = evaluations.get(entry, 0) + 1
 
-print(evaluations)
+evaluations = sorted(evaluations.items(), key=lambda x: x[1])
+ids, counts = zip(*evaluations)
+ids = list(ids)
+counts = list(counts)
+
+plt.figure(figsize=(20, 12))
+plt.barh(ids, counts, color="tab:red")
+
+plt.xlabel("Count of Failing Evaluations", fontweight="bold", fontsize=16, labelpad=20)
+plt.ylabel("Evaluation ID", fontweight="bold", fontsize=16, labelpad=20)
+
+ax = plt.gca()
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["bottom"].set_visible(False)
+ax.set_axisbelow(True)
+ax.grid(axis="x", linestyle="--")
+
+plt.tight_layout()
+plt.savefig(CHARTS_PATH / "chart-evaluations-count.pdf", format="pdf")
+plt.close()
