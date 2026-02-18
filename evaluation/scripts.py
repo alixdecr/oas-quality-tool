@@ -215,7 +215,7 @@ for category in qualities:
         qualities[category][evaluation] = np.mean(qualities[category][evaluation])
 
 categories = ["Micro", "Small", "Medium", "Large", "Very Large"]
-evaluations = ["general", "format", "oas-version", "metadata", "server", "descriptions", "examples"]
+evaluations = ["general", "format", "oas-version", "metadata", "server", "semantics"]
 
 plt.figure(figsize=(20, 12))
 
@@ -239,7 +239,7 @@ ax.set_axisbelow(True)
 ax.grid(axis="y", linestyle="--")
 
 plt.legend(
-    ["General", "Format", "OAS Version", "Metadata", "Server", "Descriptions", "Examples"],
+    ["General", "Format", "OAS Version", "Metadata", "Server", "Semantics"],
     title="Evaluation Dimensions",
     title_fontsize=15,
     fontsize=14,
