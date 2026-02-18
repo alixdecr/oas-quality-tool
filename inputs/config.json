@@ -3,12 +3,11 @@
     "out-path":"outputs",
 
     "normalization-weights": {
-        "format": 0.1667,
-        "oas-version": 0.1667,
-        "metadata": 0.1667,
-        "server": 0.1667,
-        "descriptions": 0.1667,
-        "examples": 0.1667
+        "format": 0.2,
+        "oas-version": 0.2,
+        "metadata": 0.2,
+        "server": 0.2,
+        "semantics": 0.2
     },
 
     "descriptions": {
@@ -76,13 +75,10 @@
             "evaluate-scheme"
         ],
 
-        "descriptions": [
+        "semantics": [
             "evaluate-route-descriptions",
             "evaluate-response-descriptions",
-            "evaluate-parameter-descriptions"
-        ],
-
-        "examples": [
+            "evaluate-parameter-descriptions",
             "evaluate-response-examples",
             "evaluate-parameter-examples"
         ]

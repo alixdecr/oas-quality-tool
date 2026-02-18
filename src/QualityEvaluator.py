@@ -1685,7 +1685,7 @@ class QualityEvaluator:
             standard_quality = 0
 
         # normalized quality
-        weights = self.config.get("normalization-weights", {"format": 0.1667, "oas-version": 0.1667, "metadata": 0.1667, "server": 0.1667, "descriptions": 0.1667, "examples": 0.1667})
+        weights = self.config.get("normalization-weights", {"format": 0.2, "oas-version": 0.2, "metadata": 0.2, "server": 0.2, "semantics": 0.2})
 
         normalized_quality = 0
 
