@@ -267,6 +267,19 @@ for json_path in OUTPUTS_PATH.glob("*.json"):
         evaluation_dimensions[dimension].append(data["evaluation-groups"][dimension]["pass"] / data["evaluation-groups"][dimension]["total"])
 
 for dimension in evaluation_dimensions:
-    evaluation_dimensions[dimension] = np.mean(evaluation_dimensions[dimension])
+    evaluation_dimensions[dimension] = round((1 - np.mean(evaluation_dimensions[dimension])) * 100, 2)
 
 print(evaluation_dimensions)
+
+dimensions = ["Format", "Server", "Metadata", "OAS Version", "Semantics"]
+values = [7.06, 20.57, 36.94, 38.79, 61.06]
+explodes = [0, 0, 0, 0, 0.06]
+colors = ["tab:orange", "tab:purple", "tab:red", "tab:green", "tab:brown"]
+
+plt.figure(figsize=(20, 12))
+
+plt.pie(values, labels=dimensions, explode=explodes, colors=colors, autopct="%1.1f%%", textprops={"fontsize": 14, "fontweight": "bold"})
+
+plt.tight_layout()
+plt.savefig(CHARTS_PATH / "chart-pie-dimensions.pdf", format="pdf")
+plt.close()
