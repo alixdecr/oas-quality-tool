@@ -160,7 +160,7 @@ ids = list(ids)
 counts = list(counts)
 
 plt.figure(figsize=(20, 12))
-plt.barh(ids, counts, color="tab:orange")
+plt.barh(ids, counts, color="#ff6e6e")
 
 plt.xlabel("Count of Failing Evaluations", fontweight="bold", fontsize=16, labelpad=20)
 plt.ylabel("Evaluation ID", fontweight="bold", fontsize=16, labelpad=20)
@@ -306,6 +306,9 @@ wedges, texts, autotexts = plt.pie(
 
 for autotext in autotexts:
     autotext.set_color("white")
+
+for wedge in wedges:
+    wedge.set_alpha(0.9)
 
 plt.tight_layout()
 plt.savefig(CHARTS_PATH / "chart-pie-dimensions.pdf", format="pdf")
