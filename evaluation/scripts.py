@@ -216,20 +216,23 @@ for category in qualities:
 
 categories = ["Micro", "Small", "Medium", "Large", "Very Large"]
 evaluations = ["general", "format", "oas-version", "metadata", "server", "semantics"]
+colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#17becf"]
 
 plt.figure(figsize=(20, 12))
 
-for eval in evaluations:
+for i, eval in enumerate(evaluations):
     values = [qualities[cat][eval] for cat in categories]
 
     if eval == "general":
-        line_width = 3.5
+        line_width = 4
         z_order = 3
+        linestyle = "--"
     else:
         line_width = 2
         z_order = 2
+        linestyle = "-"
 
-    plt.plot(categories, values, marker="o", linewidth=line_width, alpha=0.9, zorder=z_order)
+    plt.plot(categories, values, marker="o", linestyle=linestyle, color=colors[i], linewidth=line_width, alpha=0.9, zorder=z_order)
 
 plt.xlabel("API Size Category", fontweight="bold", fontsize=16, labelpad=20)
 plt.ylabel("Quality", fontweight="bold", fontsize=16, labelpad=20)
@@ -238,13 +241,24 @@ ax = plt.gca()
 ax.set_axisbelow(True)
 ax.grid(axis="y", linestyle="--")
 
+ax.tick_params(axis="x", labelsize=14, labelrotation=0, width=1.5)
+ax.tick_params(axis="y", labelsize=14, width=1.5)
+
+for tick in ax.get_xticklabels():
+    tick.set_fontweight("bold")
+for tick in ax.get_yticklabels():
+    tick.set_fontweight("bold")
+
 plt.legend(
-    ["Global Average", "Schema Conformance\n(OAS Format)", "Maturity\n(OAS Version)", "Governance\n(Metadata)", "Operational Readiness\n(Servers)", "Semantic Documentation and Clarity\n(Descriptions & Examples)"],
+    ["Global Average", "Structural Integrity (Format)", "Evolutionary Maturity (OAS Version)", "Administrative Governance (Metadata)", "Operational Readiness (Servers)", "Semantic Communicability (Descriptions & Examples)"],
     title="Evaluation Dimensions",
     title_fontsize=15,
     fontsize=14,
     loc="lower left"
 )
+
+leg = plt.gca().get_legend()
+leg.get_title().set_fontweight("bold")
 
 plt.tight_layout()
 plt.savefig(CHARTS_PATH / "chart-quality.pdf", format="pdf")
@@ -271,14 +285,27 @@ for dimension in evaluation_dimensions:
 
 print(evaluation_dimensions)
 
-dimensions = ["Schema Conformance\n(OAS Format)", "Operational Readiness\n(Servers)", "Governance\n(Metadata)", "Maturity\n(OAS Version)", "Semantic Documentation and Clarity\n(Descriptions & Examples)"]
+dimensions = ["Structural Integrity\n(Format)", "Operational Readiness\n(Servers)", "Administrative Governance\n(Metadata)", "Evolutionary Maturity\n(OAS Version)", "Semantic Communicability\n(Descriptions & Examples)"]
 values = [7.06, 20.57, 36.94, 38.79, 61.06]
 explodes = [0, 0, 0, 0, 0.06]
-colors = ["tab:orange", "tab:purple", "tab:red", "tab:green", "tab:brown"]
+colors = ["#ff7f0e", "#9467bd", "#d62728", "#2ca02c", "#17becf"]
+
+def make_autopct(pct):
+    return f"{pct:.1f}%"
 
 plt.figure(figsize=(20, 12))
 
-plt.pie(values, labels=dimensions, explode=explodes, colors=colors, autopct="%1.1f%%", textprops={"fontsize": 24, "fontweight": "bold"})
+wedges, texts, autotexts = plt.pie(
+    values,
+    labels=dimensions,
+    explode=explodes,
+    colors=colors,
+    autopct=make_autopct,
+    textprops={"fontsize": 24, "fontweight": "bold"}
+)
+
+for autotext in autotexts:
+    autotext.set_color("white")
 
 plt.tight_layout()
 plt.savefig(CHARTS_PATH / "chart-pie-dimensions.pdf", format="pdf")
