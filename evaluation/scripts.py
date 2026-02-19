@@ -239,7 +239,7 @@ ax.set_axisbelow(True)
 ax.grid(axis="y", linestyle="--")
 
 plt.legend(
-    ["General", "Format", "OAS Version", "Metadata", "Server", "Semantics"],
+    ["Global Average", "Schema Conformance\n(OAS Format)", "Maturity\n(OAS Version)", "Governance\n(Metadata)", "Operational Readiness\n(Servers)", "Semantic Documentation and Clarity\n(Descriptions & Examples)"],
     title="Evaluation Dimensions",
     title_fontsize=15,
     fontsize=14,
@@ -271,14 +271,14 @@ for dimension in evaluation_dimensions:
 
 print(evaluation_dimensions)
 
-dimensions = ["Format", "Server", "Metadata", "OAS Version", "Semantics"]
+dimensions = ["Schema Conformance\n(OAS Format)", "Operational Readiness\n(Servers)", "Governance\n(Metadata)", "Maturity\n(OAS Version)", "Semantic Documentation and Clarity\n(Descriptions & Examples)"]
 values = [7.06, 20.57, 36.94, 38.79, 61.06]
 explodes = [0, 0, 0, 0, 0.06]
 colors = ["tab:orange", "tab:purple", "tab:red", "tab:green", "tab:brown"]
 
 plt.figure(figsize=(20, 12))
 
-plt.pie(values, labels=dimensions, explode=explodes, colors=colors, autopct="%1.1f%%", textprops={"fontsize": 14, "fontweight": "bold"})
+plt.pie(values, labels=dimensions, explode=explodes, colors=colors, autopct="%1.1f%%", textprops={"fontsize": 24, "fontweight": "bold"})
 
 plt.tight_layout()
 plt.savefig(CHARTS_PATH / "chart-pie-dimensions.pdf", format="pdf")
