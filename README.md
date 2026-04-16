@@ -8,6 +8,21 @@
 
 ---
 
+## Citation
+
+If you use this tool in your research or find it useful in your work, please cite our paper:
+
+Decrop, A., Vandeloise, M., Heymans, P. and Perrouin, G., 2026. OASQuali: Automated Quality Analysis of OpenAPI Specifications. In Proceedings of the 26th International Conference on Web Engineering, ICWE 2026.
+
+```bibtex
+@inproceedings{decrop2026oasquali,
+    title={OASQuali: Automated Quality Analysis of OpenAPI Specifications},
+    author={Decrop, Alix and Vandeloise, Mikel and Heymans, Patrick and Perrouin, Gilles},
+    booktitle={Proceedings of the 26th International Conference on Web Engineering, ICWE 2026},
+    year={2026}
+}
+```
+
 ## Abstract
 
 The **OAS Quality Tool** is a Python-based framework developed to automate the assessment of **OpenAPI Specifications (OAS)**. In the context of API governance and service-oriented architectures, the quality of interface documentation is paramount for developer experience (DX), system interoperability, and maintainability.
