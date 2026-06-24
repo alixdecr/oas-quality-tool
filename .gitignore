@@ -4,3 +4,4 @@ outputs
 outputs.backup
 inputs/oas
 trash/
+.DS_Store
