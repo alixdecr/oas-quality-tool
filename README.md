@@ -1,7 +1,7 @@
 # OAS Quality Tool: An Automated Framework for OpenAPI Specification Auditing
 
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+![License](https://img.shields.io/badge/license-CC%20BY%20NC%20ND%204.0-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
 **A rigorous, rule-based static analysis tool designed to evaluate, grade, and improve the quality of RESTful API definitions.**
